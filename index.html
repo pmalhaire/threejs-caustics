@@ -1,59 +1,71 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>ThreeJS Caustics</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
+<head>
+  <title>ThreeJS Caustics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/three@v0.117.0"></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/controls/OrbitControls.js"></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/loaders/OBJLoader.js"></script>
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.js"></script>
-  </head>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
 
-  <body>
-    <section class="section">
-      <div class="container">
-        <h1 class="title">
-          ThreeJS Caustics
-        </h1>
-        <p class="subtitle">
-        </p>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/three@v0.117.0"></script>
+  <script type="text/javascript"
+    src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/controls/OrbitControls.js"></script>
+  <script type="text/javascript"
+    src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/loaders/OBJLoader.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.js"></script>
+</head>
 
-        <p>
-          Checkout the code: <a href="https://github.com/martinRenou/threejs-caustics">https://github.com/martinRenou/threejs-caustics</a>
-        </p>
-        <p>
-          Implementation details: <a href="https://medium.com/@martinRenou/real-time-rendering-of-water-caustics-59cda1d74aa">https://medium.com/@martinRenou/real-time-rendering-of-water-caustics-59cda1d74aa</a>
-        </p>
+<body>
+  <section class="section">
+    <div class="container">
+      <h1 class="title">
+        ThreeJS Caustics
+      </h1>
+      <p class="subtitle">
+      </p>
 
-        <p>
-          Shark mesh from <a href="https://sketchfab.com/3d-models/great-white-shark-b67415aaa0bd450d865f9604dcdac244">AzurPoly on Sketchfab</a> (CC Attribution)
-        </p>
-        <p>
-          Rock mesh from <a href="https://sketchfab.com/3d-models/rocks-low-poly-starter-pack-2a362c908b1047539b1f4f5d78d30b4e">Dreyx on Sketchfab</a> (CC Attribution)
-        </p>
-        <p>
-          Plant mesh from <a href="https://sketchfab.com/3d-models/plant-972ccc8ed73a48309869452c48bd525b">vaporclaws on Sketchfab</a> (CC Attribution)
-        </p>
-        <p>
-          Skybox texture from <a href="https://github.com/BabylonJS/Babylon.js/tree/master/Playground/textures">BabylonJS</a> (Apache-2.0)
-        </p>
+      <p>
+        Checkout the code: <a
+          href="https://github.com/pmalhaire/threejs-caustics">https://github.com/pmalhaire/threejs-caustics</a>
+      </p>
+      <p>
+        Implementation details: <a
+          href="https://medium.com/@pmalhaire/real-time-rendering-of-water-caustics-59cda1d74aa">https://medium.com/@pmalhaire/real-time-rendering-of-water-caustics-59cda1d74aa</a>
+      </p>
 
-        <div class="columns">
-          <div class="column">
-          </div>
-          <div class="column">
-            <canvas id="canvas" width="1024px" height="800px" style=""></canvas>
-          </div>
-          <div class="column">
-          </div>
+      <p>
+        Shark mesh from <a
+          href="https://sketchfab.com/3d-models/great-white-shark-b67415aaa0bd450d865f9604dcdac244">AzurPoly on
+          Sketchfab</a> (CC Attribution)
+      </p>
+      <p>
+        Rock mesh from <a
+          href="https://sketchfab.com/3d-models/rocks-low-poly-starter-pack-2a362c908b1047539b1f4f5d78d30b4e">Dreyx on
+          Sketchfab</a> (CC Attribution)
+      </p>
+      <p>
+        Plant mesh from <a href="https://sketchfab.com/3d-models/plant-972ccc8ed73a48309869452c48bd525b">vaporclaws on
+          Sketchfab</a> (CC Attribution)
+      </p>
+      <p>
+        Skybox texture from <a
+          href="https://github.com/BabylonJS/Babylon.js/tree/master/Playground/textures">BabylonJS</a> (Apache-2.0)
+      </p>
+
+      <div class="columns">
+        <div class="column">
         </div>
-
+        <div class="column">
+          <canvas id="canvas" width="1024px" height="800px" style=""></canvas>
+        </div>
+        <div class="column">
+        </div>
       </div>
-    </section>
 
-    <script type="text/javascript" src="index.js"></script>
-  </body>
+    </div>
+  </section>
+
+  <script type="text/javascript" src="index.js"></script>
+</body>
+
 </html>
