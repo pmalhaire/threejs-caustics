@@ -41,7 +41,7 @@ camera.position.set(-1.5, -1.5, 1);
 camera.up.set(0, 0, 1);
 scene.add(camera);
 
-const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true, alpha: true});
+const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
 renderer.setSize(width, height);
 renderer.autoClear = false;
 
@@ -188,8 +188,8 @@ class WaterSimulation {
 
     this._geometry = new THREE.PlaneBufferGeometry(2, 2);
 
-    this._targetA = new THREE.WebGLRenderTarget(waterSize, waterSize, {type: THREE.FloatType});
-    this._targetB = new THREE.WebGLRenderTarget(waterSize, waterSize, {type: THREE.FloatType});
+    this._targetA = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
+    this._targetB = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
     this.target = this._targetA;
 
     const shadersPromises = [
@@ -199,30 +199,30 @@ class WaterSimulation {
     ];
 
     this.loaded = Promise.all(shadersPromises)
-        .then(([vertexShader, dropFragmentShader, updateFragmentShader]) => {
-      const dropMaterial = new THREE.RawShaderMaterial({
-        uniforms: {
+      .then(([vertexShader, dropFragmentShader, updateFragmentShader]) => {
+        const dropMaterial = new THREE.RawShaderMaterial({
+          uniforms: {
             center: { value: [0, 0] },
             radius: { value: 0 },
             strength: { value: 0 },
             texture: { value: null },
-        },
-        vertexShader: vertexShader,
-        fragmentShader: dropFragmentShader,
-      });
+          },
+          vertexShader: vertexShader,
+          fragmentShader: dropFragmentShader,
+        });
 
-      const updateMaterial = new THREE.RawShaderMaterial({
-        uniforms: {
+        const updateMaterial = new THREE.RawShaderMaterial({
+          uniforms: {
             delta: { value: [1 / 216, 1 / 216] },  // TODO: Remove this useless uniform and hardcode it in shaders?
             texture: { value: null },
-        },
-        vertexShader: vertexShader,
-        fragmentShader: updateFragmentShader,
-      });
+          },
+          vertexShader: vertexShader,
+          fragmentShader: updateFragmentShader,
+        });
 
-      this._dropMesh = new THREE.Mesh(this._geometry, dropMaterial);
-      this._updateMesh = new THREE.Mesh(this._geometry, updateMaterial);
-    });
+        this._dropMesh = new THREE.Mesh(this._geometry, dropMaterial);
+        this._updateMesh = new THREE.Mesh(this._geometry, updateMaterial);
+      });
   }
 
   // Add a drop of water at the (x, y) coordinate (in the range [-1, 1])
@@ -271,24 +271,24 @@ class Water {
     ];
 
     this.loaded = Promise.all(shadersPromises)
-        .then(([vertexShader, fragmentShader]) => {
-      this.material = new THREE.ShaderMaterial({
-        uniforms: {
+      .then(([vertexShader, fragmentShader]) => {
+        this.material = new THREE.ShaderMaterial({
+          uniforms: {
             light: { value: light },
             water: { value: null },
             envMap: { value: null },
             skybox: { value: skybox },
-        },
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-      });
-      this.material.extensions = {
-        derivatives: true
-      };
+          },
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+        });
+        this.material.extensions = {
+          derivatives: true
+        };
 
-      this.mesh = new THREE.Mesh(this.geometry, this.material);
-      this.mesh.position.set(waterPosition.x, waterPosition.y, waterPosition.z);
-    });
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+        this.mesh.position.set(waterPosition.x, waterPosition.y, waterPosition.z);
+      });
   }
 
   setHeightTexture(waterTexture) {
@@ -308,7 +308,7 @@ class EnvironmentMap {
 
   constructor() {
     this.size = 1024;
-    this.target = new THREE.WebGLRenderTarget(this.size, this.size, {type: THREE.FloatType});
+    this.target = new THREE.WebGLRenderTarget(this.size, this.size, { type: THREE.FloatType });
 
     const shadersPromises = [
       loadFile('shaders/environment_mapping/vertex.glsl'),
@@ -318,12 +318,12 @@ class EnvironmentMap {
     this._meshes = [];
 
     this.loaded = Promise.all(shadersPromises)
-        .then(([vertexShader, fragmentShader]) => {
-      this._material = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
+      .then(([vertexShader, fragmentShader]) => {
+        this._material = new THREE.ShaderMaterial({
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+        });
       });
-    });
   }
 
   setGeometries(geometries) {
@@ -354,7 +354,7 @@ class EnvironmentMap {
 class Caustics {
 
   constructor() {
-    this.target = new THREE.WebGLRenderTarget(waterSize * 3., waterSize * 3., {type: THREE.FloatType});
+    this.target = new THREE.WebGLRenderTarget(waterSize * 3., waterSize * 3., { type: THREE.FloatType });
 
     this._waterGeometry = new THREE.PlaneBufferGeometry(2, 2, waterSize, waterSize);
 
@@ -364,40 +364,40 @@ class Caustics {
     ];
 
     this.loaded = Promise.all(shadersPromises)
-        .then(([waterVertexShader, waterFragmentShader]) => {
-      this._waterMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-          light: { value: light },
-          env: { value: null },
-          water: { value: null },
-          deltaEnvTexture: { value: null },
-        },
-        vertexShader: waterVertexShader,
-        fragmentShader: waterFragmentShader,
-        transparent: true,
+      .then(([waterVertexShader, waterFragmentShader]) => {
+        this._waterMaterial = new THREE.ShaderMaterial({
+          uniforms: {
+            light: { value: light },
+            env: { value: null },
+            water: { value: null },
+            deltaEnvTexture: { value: null },
+          },
+          vertexShader: waterVertexShader,
+          fragmentShader: waterFragmentShader,
+          transparent: true,
+        });
+
+        this._waterMaterial.blending = THREE.CustomBlending;
+
+        // Set the blending so that:
+        // Caustics intensity uses an additive function
+        this._waterMaterial.blendEquation = THREE.AddEquation;
+        this._waterMaterial.blendSrc = THREE.OneFactor;
+        this._waterMaterial.blendDst = THREE.OneFactor;
+
+        // Caustics depth does not use blending, we just set the value
+        this._waterMaterial.blendEquationAlpha = THREE.AddEquation;
+        this._waterMaterial.blendSrcAlpha = THREE.OneFactor;
+        this._waterMaterial.blendDstAlpha = THREE.ZeroFactor;
+
+
+        this._waterMaterial.side = THREE.DoubleSide;
+        this._waterMaterial.extensions = {
+          derivatives: true
+        };
+
+        this._waterMesh = new THREE.Mesh(this._waterGeometry, this._waterMaterial);
       });
-
-      this._waterMaterial.blending = THREE.CustomBlending;
-
-      // Set the blending so that:
-      // Caustics intensity uses an additive function
-      this._waterMaterial.blendEquation = THREE.AddEquation;
-      this._waterMaterial.blendSrc = THREE.OneFactor;
-      this._waterMaterial.blendDst = THREE.OneFactor;
-
-      // Caustics depth does not use blending, we just set the value
-      this._waterMaterial.blendEquationAlpha = THREE.AddEquation;
-      this._waterMaterial.blendSrcAlpha = THREE.OneFactor;
-      this._waterMaterial.blendDstAlpha = THREE.ZeroFactor;
-
-
-      this._waterMaterial.side = THREE.DoubleSide;
-      this._waterMaterial.extensions = {
-        derivatives: true
-      };
-
-      this._waterMesh = new THREE.Mesh(this._waterGeometry, this._waterMaterial);
-    });
   }
 
   setDeltaEnvTexture(deltaEnvTexture) {
@@ -440,7 +440,7 @@ class Environment {
           light: { value: light },
           caustics: { value: null },
           lightProjectionMatrix: { value: lightCamera.projectionMatrix },
-          lightViewMatrix: { value: lightCamera.matrixWorldInverse  }
+          lightViewMatrix: { value: lightCamera.matrixWorldInverse }
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -481,18 +481,18 @@ class Debug {
     ];
 
     this.loaded = Promise.all(shadersPromises)
-        .then(([vertexShader, fragmentShader]) => {
-      this._material = new THREE.RawShaderMaterial({
-        uniforms: {
+      .then(([vertexShader, fragmentShader]) => {
+        this._material = new THREE.RawShaderMaterial({
+          uniforms: {
             texture: { value: null },
-        },
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
-      });
+          },
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+        });
 
-      this._mesh = new THREE.Mesh(this._geometry, this._material);
-      this._material.transparent = true;
-    });
+        this._mesh = new THREE.Mesh(this._geometry, this._material);
+        this._material.transparent = true;
+      });
   }
 
   draw(renderer, texture) {
@@ -585,6 +585,54 @@ function onMouseMove(event) {
     waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
   }
 }
+//if you have another AudioContext class use that one, as some browsers have a limit
+var audioCtx = new (window.AudioContext || window.webkitAudioContext || window.audioContext);
+var run = false;
+//All arguments are optional:
+
+//duration of the tone in milliseconds. Default is 500
+//frequency of the tone in hertz. default is 440
+//volume of the tone. Default is 1, off is 0.
+//type of tone. Possible values are sine, square, sawtooth, triangle, and custom. Default is sine.
+//callback to use on end of tone
+function beep(duration, frequency, volume, type, callback) {
+  var oscillator = audioCtx.createOscillator();
+  var gainNode = audioCtx.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  if (volume) { gainNode.gain.value = volume; }
+  if (frequency) { oscillator.frequency.value = frequency; }
+  if (type) { oscillator.type = type; }
+  if (callback) { oscillator.onended = callback; }
+
+  oscillator.start(audioCtx.currentTime);
+  oscillator.stop(audioCtx.currentTime + ((duration || 500) / 1000));
+};
+
+function onKeyPressed(event) {
+
+  //const rect = canvas.getBoundingClientRect();
+  let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  let digit = parseInt(event.key)
+  //console.log(event, digit)
+  if (keys.includes(digit)) {
+    if (run || event.repeat) {
+      return
+    }
+    run = true;
+    let x = (digit - .1) / 4. - 1.;
+    let y = 0.;
+    //console.log("draw", x, y);
+    waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
+    beep(500, 440 + 440 / 8 * digit);
+    run = false;
+  }
+
+
+}
+
 
 const loaded = [
   waterSimulation.loaded,
@@ -610,14 +658,8 @@ Promise.all(loaded).then(() => {
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
+  canvas.addEventListener('keydown', { handleEvent: onKeyPressed });
 
-  for (var i = 0; i < 5; i++) {
-    waterSimulation.addDrop(
-      renderer,
-      Math.random() * 2 - 1, Math.random() * 2 - 1,
-      0.03, (i & 1) ? 0.02 : -0.02
-    );
-  }
 
   animate();
 });
