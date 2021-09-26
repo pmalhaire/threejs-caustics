@@ -1,9 +1,7 @@
-# ThreeJS-caustics
+# ThreeJS-caustics for music play
 
 Try it live: https://pmalhaire.github.io/threejs-caustics
 
-Implementation details: https://medium.com/@pmalhaire/real-time-rendering-of-water-caustics-59cda1d74aa
+Forked as a direct application from "https://github.com/martinRenou/threejs-caustics"
 
-
-![top](screenshots/top.png)
-![side](screenshots/side.png)
+Implementation details: https://medium.com/@martinRenou/real-time-rendering-of-water-caustics-59cda1d74aa

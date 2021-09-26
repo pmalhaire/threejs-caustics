@@ -25,8 +25,11 @@ function loadFile(filename) {
 const waterPosition = new THREE.Vector3(0, 0, 0.8);
 const near = 0.;
 const far = 2.;
-const waterSize = 512;
-
+const waterSize = 1024;
+// number of segment in water
+const waterDepth = 512;
+const envSize = 1024;
+const waterScale = 2;
 // Create directional light
 // TODO Replace this by a THREE.DirectionalLight and use the provided matrix (check that it's an Orthographic matrix as expected)
 const light = [0., 0., -1.];
@@ -68,14 +71,14 @@ const clock = new THREE.Clock();
 // Ray caster
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-const targetgeometry = new THREE.PlaneGeometry(2, 2);
+const targetgeometry = new THREE.PlaneGeometry(waterScale, waterScale);
 for (let vertex of targetgeometry.vertices) {
   vertex.z = waterPosition.z;
 }
 const targetmesh = new THREE.Mesh(targetgeometry);
 
 // Geometries
-const waterGeometry = new THREE.PlaneBufferGeometry(2, 2, waterSize, waterSize);
+const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 const vertices = new Float32Array([
   -1, -1, -1,
   -1, -1, 1,
@@ -116,7 +119,6 @@ const indices = new Uint32Array([
 ]);
 
 // Environment
-const floorGeometry = new THREE.PlaneBufferGeometry(100, 100, 1, 1);
 
 const objLoader = new THREE.OBJLoader();
 let shark;
@@ -154,21 +156,6 @@ const rockLoaded = new Promise((resolve) => {
   });
 });
 
-let plant;
-const plantLoaded = new Promise((resolve) => {
-  objLoader.load('assets/plant.obj', (plantGeometry) => {
-    plantGeometry = plantGeometry.children[0].geometry;
-    plantGeometry.computeVertexNormals();
-
-    plant = plantGeometry;
-    plant.rotateX(Math.PI / 6.);
-    plant.scale(0.03, 0.03, 0.03);
-    plant.translate(-0.5, 0.5, 0.);
-
-    resolve();
-  });
-});
-
 // Skybox
 const cubetextureloader = new THREE.CubeTextureLoader();
 
@@ -186,7 +173,7 @@ class WaterSimulation {
   constructor() {
     this._camera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 2000);
 
-    this._geometry = new THREE.PlaneBufferGeometry(2, 2);
+    this._geometry = new THREE.PlaneBufferGeometry(waterScale, waterScale);
 
     this._targetA = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
     this._targetB = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
@@ -307,7 +294,7 @@ class Water {
 class EnvironmentMap {
 
   constructor() {
-    this.size = 1024;
+    this.size = envSize;
     this.target = new THREE.WebGLRenderTarget(this.size, this.size, { type: THREE.FloatType });
 
     const shadersPromises = [
@@ -356,7 +343,7 @@ class Caustics {
   constructor() {
     this.target = new THREE.WebGLRenderTarget(waterSize * 3., waterSize * 3., { type: THREE.FloatType });
 
-    this._waterGeometry = new THREE.PlaneBufferGeometry(2, 2, waterSize, waterSize);
+    this._waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterSize, waterSize);
 
     const shadersPromises = [
       loadFile('shaders/caustics/water_vertex.glsl'),
@@ -643,11 +630,10 @@ const loaded = [
   debug.loaded,
   sharkLoaded,
   rockLoaded,
-  plantLoaded,
 ];
 
 Promise.all(loaded).then(() => {
-  const envGeometries = [floorGeometry, shark, rock1, rock2, plant];
+  const envGeometries = [shark, rock1, rock2];
 
   environmentMap.setGeometries(envGeometries);
   environment.setGeometries(envGeometries);
