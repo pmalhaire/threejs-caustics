@@ -577,6 +577,19 @@ var audioCtx = new (window.AudioContext || window.webkitAudioContext || window.a
 var run = false;
 //All arguments are optional:
 
+// scale
+const A4 = 440.00;
+const B4 = 493.88;
+const C5 = 523.25;
+const D5 = 587.33;
+const E5 = 659.25;
+const F5 = 698.46;
+const G5 = 783.99;
+const A5 = 880.00;
+const B5 = 987.77;
+const C6 = 1046.50;
+const D6 = 1174.66;
+
 //duration of the tone in milliseconds. Default is 500
 //frequency of the tone in hertz. default is 440
 //volume of the tone. Default is 1, off is 0.
@@ -599,9 +612,19 @@ function beep(duration, frequency, volume, type, callback) {
 };
 
 function onKeyPressed(event) {
-
-  //const rect = canvas.getBoundingClientRect();
   let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  let notes = [
+    A4,
+    B4,
+    C5,
+    D5,
+    E5,
+    F5,
+    G5,
+    A5,
+    B5,
+    C6,
+    D6]
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
@@ -613,13 +636,31 @@ function onKeyPressed(event) {
     let y = 0.;
     //console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
-    beep(500, 440 + 440 / 8 * digit);
+    beep(500, notes[digit]);
     run = false;
   }
 
 
 }
 
+function onTouch(event) {
+
+  const rect = canvas.getBoundingClientRect();
+
+  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
+  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObject(targetmesh);
+
+  for (let intersect of intersects) {
+    if (run || event.repeat) {
+      return
+    }
+    waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
+  }
+}
 
 const loaded = [
   waterSimulation.loaded,
@@ -644,6 +685,7 @@ Promise.all(loaded).then(() => {
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
+  canvas.addEventListener('touchstart', { handleEvent: onTouch });
   canvas.addEventListener('keydown', { handleEvent: onKeyPressed });
 
 
