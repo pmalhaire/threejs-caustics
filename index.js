@@ -645,6 +645,13 @@ function onKeyPressed(event) {
 
 function onTouch(event) {
   console.log("touch",event);
+  event.preventDefault();
+  var touches = event.changedTouches;
+
+  for (var i=0; i<touches.length; i++) {
+    ongoingTouches.push(touches[i]);
+    console.log("touches",i,touches[i]);
+  }
   const rect = canvas.getBoundingClientRect();
 
   mouse.x = (event.clientX - rect.left) * 2 / width - 1;
