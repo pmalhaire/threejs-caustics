@@ -631,7 +631,7 @@ function onTouch(event) {
         return
       }
       waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-      let digit = Math.floor((intersect.point.x + 1.1)*4.0+.1);
+      let digit = Math.floor((intersect.point.x + 1.1)*4.0+.1)+1;
       console.log("computed digit", digit);
       playNote(notes[digit - 1]);
     }
