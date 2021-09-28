@@ -615,7 +615,6 @@ function onTouch(event) {
   var touches = event.changedTouches;
 
   for (var i = 0; i < touches.length; i++) {
-    ongoingTouches.push(touches[i]);
     console.log("touches", i, touches[i]);
   }
   const rect = canvas.getBoundingClientRect();
