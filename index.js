@@ -40,7 +40,7 @@ lightCamera.lookAt(0, 0, 0);
 // Create Renderer
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, width / height, 0.01, 100);
-camera.position.set(-1.5, -1.5, 1);
+camera.position.set(0, -1, 2);
 camera.up.set(0, 0, 1);
 scene.add(camera);
 
