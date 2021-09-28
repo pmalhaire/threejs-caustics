@@ -572,14 +572,6 @@ function onMouseMove(event) {
     waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
   }
 }
-//if you have another AudioContext class use that one, as some browsers have a limit
-var audioCtx = new (window.AudioContext || window.webkitAudioContext || window.audioContext);
-var run = false;
-//All arguments are optional:
-
-
-// const keys = document.querySelectorAll(".key"),
-//   note = document.querySelector(".nowplaying");
 
 function playNote(note) {
   const audio = document.querySelector(`audio[data-key="${note}"]`);
@@ -591,9 +583,6 @@ function removeTransition(e) {
   if (e.propertyName !== "transform") return;
   this.classList.remove("playing");
 }
-
-// keys.forEach(key => key.addEventListener("transitionend", removeTransition));
-
 
 function onKeyPressed(event) {
   let keys = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -609,29 +598,27 @@ function onKeyPressed(event) {
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
-    if (run || event.repeat) {
+    if (event.repeat) {
       return
     }
-    run = true;
     let x = (digit - .1) / 4. - 1.1;
     let y = 0.;
     //console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
     playNote(notes[digit - 1]);
-    run = false;
   }
 
 
 }
 
 function onTouch(event) {
-  console.log("touch",event);
+  console.log("touch", event);
   event.preventDefault();
   var touches = event.changedTouches;
 
-  for (var i=0; i<touches.length; i++) {
+  for (var i = 0; i < touches.length; i++) {
     ongoingTouches.push(touches[i]);
-    console.log("touches",i,touches[i]);
+    console.log("touches", i, touches[i]);
   }
   const rect = canvas.getBoundingClientRect();
 
@@ -643,7 +630,7 @@ function onTouch(event) {
   const intersects = raycaster.intersectObject(targetmesh);
 
   for (let intersect of intersects) {
-    if (run || event.repeat) {
+    if (event.repeat) {
       return
     }
     waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
