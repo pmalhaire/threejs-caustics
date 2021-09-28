@@ -616,22 +616,23 @@ function onTouch(event) {
 
   for (var i = 0; i < touches.length; i++) {
     console.log("touches", i, touches[i]);
-  }
-  const rect = canvas.getBoundingClientRect();
+    const rect = canvas.getBoundingClientRect();
 
-  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
-  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+    mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
+    mouse.y = - (touches[i].clientY - rect.top) * 2 / height + 1;
 
-  raycaster.setFromCamera(mouse, camera);
+    raycaster.setFromCamera(mouse, camera);
 
-  const intersects = raycaster.intersectObject(targetmesh);
+    const intersects = raycaster.intersectObject(targetmesh);
 
-  for (let intersect of intersects) {
-    if (event.repeat) {
-      return
+    for (let intersect of intersects) {
+      if (event.repeat) {
+        return
+      }
+      waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
     }
-    waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
   }
+
 }
 
 const loaded = [
