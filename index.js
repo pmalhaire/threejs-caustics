@@ -657,7 +657,7 @@ Promise.all(loaded).then(() => {
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
-  canvas.addEventListener('touchstart', { handleEvent: onTouch });
+  canvas.addEventListener("touchstart", onTouch, false);
   canvas.addEventListener('keydown', { handleEvent: onKeyPressed });
 
 
