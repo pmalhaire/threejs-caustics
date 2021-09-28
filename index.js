@@ -612,7 +612,7 @@ function onKeyPressed(event) {
 }
 
 function onTouch(event) {
-  console.log("touch", event);
+  //console.log("touch", event);
   event.preventDefault();
   var touches = event.changedTouches;
 
