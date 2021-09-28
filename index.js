@@ -583,9 +583,7 @@ function removeTransition(e) {
   this.classList.remove("playing");
 }
 
-function onKeyPressed(event) {
-  let keys = [1, 2, 3, 4, 5, 6, 7, 8]
-  let notes = [
+let notes = [
     "A0",
     "B0",
     "C0",
@@ -593,7 +591,10 @@ function onKeyPressed(event) {
     "E0",
     "F0",
     "G0",
-    "A1"]
+    "A1"];
+
+function onKeyPressed(event) {
+  let keys = [1, 2, 3, 4, 5, 6, 7, 8]
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
@@ -615,7 +616,7 @@ function onTouch(event) {
   var touches = event.changedTouches;
 
   for (var i = 0; i < touches.length; i++) {
-    console.log("touches", i, touches[i],touches[i].clientX,touches[i].clientY);
+    //console.log("touches", i, touches[i],touches[i].clientX,touches[i].clientY);
     const rect = canvas.getBoundingClientRect();
 
     mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
@@ -630,6 +631,9 @@ function onTouch(event) {
         return
       }
       waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
+      let digit = Math.floor((intersect.point.x + 1.1)*4.0+.1);
+      console.log("computed digit", digit);
+      playNote(notes[digit - 1]);
     }
   }
 
