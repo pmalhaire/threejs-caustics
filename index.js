@@ -49,18 +49,18 @@ renderer.setSize(width, height);
 renderer.autoClear = false;
 
 // Create mouse Controls
-// const controls = new THREE.OrbitControls(
-//   camera,
-//   canvas
-// );
+const controls = new THREE.OrbitControls(
+  camera,
+  canvas
+);
 
-// controls.target = waterPosition;
+controls.target = waterPosition;
 
-// controls.minPolarAngle = 0;
-// controls.maxPolarAngle = Math.PI / 2. - 0.1;
+controls.minPolarAngle = 0;
+controls.maxPolarAngle = Math.PI / 2. - 0.1;
 
-// controls.minDistance = 1.5;
-// controls.maxDistance = 3.;
+controls.minDistance = 1.5;
+controls.maxDistance = 3.;
 
 // Target for computing the water refraction
 const temporaryRenderTarget = new THREE.WebGLRenderTarget(width, height);
@@ -551,7 +551,7 @@ function animate() {
   water.mesh.visible = true;
   renderer.render(scene, camera);
 
-  //controls.update();
+  controls.update();
 
   stats.end();
 
