@@ -591,10 +591,11 @@ let notes = [
     "E0",
     "F0",
     "G0",
-    "A1"];
+    "A1",
+    "B1"];
 
 function onKeyPressed(event) {
-  let keys = [1, 2, 3, 4, 5, 6, 7, 8]
+  let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
