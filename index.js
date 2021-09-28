@@ -615,7 +615,7 @@ function onTouch(event) {
   var touches = event.changedTouches;
 
   for (var i = 0; i < touches.length; i++) {
-    console.log("touches", i, touches[i]);
+    console.log("touches", i, touches[i],touches[i].clientX,touches[i].clientY);
     const rect = canvas.getBoundingClientRect();
 
     mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
