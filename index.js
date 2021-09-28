@@ -577,54 +577,35 @@ var audioCtx = new (window.AudioContext || window.webkitAudioContext || window.a
 var run = false;
 //All arguments are optional:
 
-// scale
-const A4 = 440.00;
-const B4 = 493.88;
-const C5 = 523.25;
-const D5 = 587.33;
-const E5 = 659.25;
-const F5 = 698.46;
-const G5 = 783.99;
-const A5 = 880.00;
-const B5 = 987.77;
-const C6 = 1046.50;
-const D6 = 1174.66;
 
-//duration of the tone in milliseconds. Default is 500
-//frequency of the tone in hertz. default is 440
-//volume of the tone. Default is 1, off is 0.
-//type of tone. Possible values are sine, square, sawtooth, triangle, and custom. Default is sine.
-//callback to use on end of tone
-function beep(duration, frequency, volume, type, callback) {
-  var oscillator = audioCtx.createOscillator();
-  var gainNode = audioCtx.createGain();
+// const keys = document.querySelectorAll(".key"),
+//   note = document.querySelector(".nowplaying");
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
+function playNote(note) {
+  const audio = document.querySelector(`audio[data-key="${note}"]`);
+  audio.currentTime = 0;
+  audio.play();
+}
 
-  if (volume) { gainNode.gain.value = volume; }
-  if (frequency) { oscillator.frequency.value = frequency; }
-  if (type) { oscillator.type = type; }
-  if (callback) { oscillator.onended = callback; }
+function removeTransition(e) {
+  if (e.propertyName !== "transform") return;
+  this.classList.remove("playing");
+}
 
-  oscillator.start(audioCtx.currentTime);
-  oscillator.stop(audioCtx.currentTime + ((duration || 500) / 1000));
-};
+// keys.forEach(key => key.addEventListener("transitionend", removeTransition));
+
 
 function onKeyPressed(event) {
-  let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  let keys = [1, 2, 3, 4, 5, 6, 7, 8]
   let notes = [
-    A4,
-    B4,
-    C5,
-    D5,
-    E5,
-    F5,
-    G5,
-    A5,
-    B5,
-    C6,
-    D6]
+    "A0",
+    "B0",
+    "C0",
+    "D0",
+    "E0",
+    "F0",
+    "G0",
+    "A1"]
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
@@ -632,11 +613,11 @@ function onKeyPressed(event) {
       return
     }
     run = true;
-    let x = (digit - .1) / 4. - 1.;
+    let x = (digit - .1) / 4. - 1.1;
     let y = 0.;
     //console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
-    beep(500, notes[digit]);
+    playNote(notes[digit - 1]);
     run = false;
   }
 
