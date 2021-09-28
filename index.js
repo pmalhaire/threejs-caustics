@@ -560,7 +560,6 @@ function animate() {
 
 function onMouseMove(event) {
   const rect = canvas.getBoundingClientRect();
-
   mouse.x = (event.clientX - rect.left) * 2 / width - 1;
   mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
 
@@ -607,7 +606,6 @@ function onKeyPressed(event) {
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
     playNote(notes[digit - 1]);
   }
-
 
 }
 
