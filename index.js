@@ -27,7 +27,7 @@ const near = 0.;
 const far = 2.;
 const waterSize = 1024;
 // number of segment in water
-const waterDepth = 512;
+const waterDepth = 1024;
 const envSize = 1024;
 const waterScale = 2;
 // Create directional light
@@ -39,8 +39,7 @@ lightCamera.lookAt(0, 0, 0);
 
 // Create Renderer
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, width / height, 0.01, 100);
-camera.position.set(0, -1, 2);
+const camera = new THREE.PerspectiveCamera(35, width / height, 0.01, 100);
 camera.up.set(0, 0, 1);
 scene.add(camera);
 
@@ -54,13 +53,13 @@ const controls = new THREE.OrbitControls(
   canvas
 );
 
-controls.target = waterPosition;
+controls.target = new THREE.Vector3(0, 0, .8);
 
 controls.minPolarAngle = 0;
-controls.maxPolarAngle = Math.PI / 8;
+controls.maxPolarAngle = Math.PI / 6;
 
-controls.minDistance = .5;
-controls.maxDistance = 1.;
+controls.minDistance = 2.1;
+controls.maxDistance = 2.1;
 
 // Target for computing the water refraction
 const temporaryRenderTarget = new THREE.WebGLRenderTarget(width, height);
@@ -137,25 +136,6 @@ const sharkLoaded = new Promise((resolve) => {
   });
 });
 
-let rock1;
-let rock2;
-const rockLoaded = new Promise((resolve) => {
-  objLoader.load('assets/rock.obj', (rockGeometry) => {
-    rockGeometry = rockGeometry.children[0].geometry;
-    rockGeometry.computeVertexNormals();
-    const size = 0.01;
-    rock1 = new THREE.BufferGeometry().copy(rockGeometry);
-    rock1.scale(size, size, size);
-    rock1.translate(0.2, 0., 0.1);
-
-    rock2 = new THREE.BufferGeometry().copy(rockGeometry);
-    rock2.scale(size, size, size);
-    rock2.translate(-0.5, 0.5, 0.2);
-    rock2.rotateZ(Math.PI / 2.);
-
-    resolve();
-  });
-});
 
 // Skybox
 const cubetextureloader = new THREE.CubeTextureLoader();
@@ -342,7 +322,7 @@ class EnvironmentMap {
 class Caustics {
 
   constructor() {
-    this.target = new THREE.WebGLRenderTarget(waterSize * 3., waterSize * 3., { type: THREE.FloatType });
+    this.target = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
 
     this._waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterSize, waterSize);
 
@@ -539,15 +519,15 @@ function removeTransition(e) {
 }
 
 let notes = [
-    "A0",
-    "B0",
-    "C0",
-    "D0",
-    "E0",
-    "F0",
-    "G0",
-    "A1",
-    "B1"];
+  "A0",
+  "B0",
+  "C0",
+  "D0",
+  "E0",
+  "F0",
+  "G0",
+  "A1",
+  "B1"];
 
 function onKeyPressed(event) {
   let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -587,8 +567,8 @@ function onTouch(event) {
         return
       }
       waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-      let digit = Math.floor((intersect.point.x + 1.1)*4.0+.1)+1;
-      console.log("computed digit", digit);
+      let digit = Math.floor((intersect.point.x + 1.1) * 4.0 + .1) + 1;
+      // console.log("computed digit", digit);
       playNote(notes[digit - 1]);
     }
   }
@@ -602,11 +582,10 @@ const loaded = [
   environment.loaded,
   caustics.loaded,
   sharkLoaded,
-  rockLoaded,
 ];
 
 Promise.all(loaded).then(() => {
-  const envGeometries = [shark, rock1, rock2];
+  const envGeometries = [shark];
 
   environmentMap.setGeometries(envGeometries);
   environment.setGeometries(envGeometries);
