@@ -20,8 +20,19 @@ const int MAX_ITERATIONS = 50;
 // water height
 const float waterHeight = 0.8;
 
+const float waterSize = 1.0;
+
+// transform coods from [-1.,1] to [0, waterSize]
+vec2 transformCoords(vec2 v){
+  return waterSize * 0.5 + waterSize * 0.5 * v;
+}
+
+float transformCoords(float v){
+  return waterSize * 0.5 + waterSize * 0.5 * v;
+}
+
 void main() {
-  vec4 waterInfo = texture2D(water, position.xy * 0.5 + 0.5);
+  vec4 waterInfo = texture2D(water, transformCoords(position.xy));
 
   // The water position is the vertex position on which we apply the height-map
   vec3 waterPosition = vec3(position.xy, position.z + waterInfo.r + waterHeight);
@@ -34,15 +45,15 @@ void main() {
   vec4 projectedWaterPosition = projectionMatrix * viewMatrix * vec4(waterPosition, 1.);
 
   vec2 currentPosition = projectedWaterPosition.xy;
-  // transform coods from [-1.,1] to [0, 1.]
-  vec2 coords = 0.5 + 0.5 * currentPosition;
+
+  vec2 coords = transformCoords(currentPosition);
 
   vec3 refracted = refract(light, waterNormal, eta);
   vec4 projectedRefractionVector = projectionMatrix * viewMatrix * vec4(refracted, 1.);
 
   vec3 refractedDirection = projectedRefractionVector.xyz;
 
-  waterDepth = 0.5 + 0.5 * projectedWaterPosition.z / projectedWaterPosition.w;
+  waterDepth = transformCoords( projectedWaterPosition.z / projectedWaterPosition.w);
   float currentDepth = projectedWaterPosition.z;
   vec4 environment = texture2D(env, coords);
 
@@ -62,13 +73,13 @@ void main() {
       break;
     }
 
-    environment = texture2D(env, 0.5 + 0.5 * currentPosition);
+    environment = texture2D(env, transformCoords(currentPosition));
   }
 
   newPosition = environment.xyz;
 
   vec4 projectedEnvPosition = projectionMatrix * viewMatrix * vec4(newPosition, 1.0);
-  depth = 0.5 + 0.5 * projectedEnvPosition.z / projectedEnvPosition.w;
+  depth = transformCoords(projectedEnvPosition.z / projectedEnvPosition.w);
 
   gl_Position = projectedEnvPosition;
 }

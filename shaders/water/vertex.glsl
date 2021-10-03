@@ -13,9 +13,15 @@ const float fresnelScale = 1.;
 // Air refractive index / Water refractive index
 const float eta = 0.7504;
 
+const float waterSize = 1.0;
+
+// transform coods from [-1.,1] to [0, waterSize]
+vec2 transformCoords(vec2 v){
+  return waterSize * 0.5 + waterSize * 0.5 * v;
+}
 
 void main() {
-  vec4 info = texture2D(water, position.xy * 0.5 + 0.5);
+  vec4 info = texture2D(water, transformCoords(position.xy));
 
   // The water position is the vertex position on which we apply the height-map
   vec3 pos = vec3(position.xy, position.z + info.r);

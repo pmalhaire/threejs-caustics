@@ -455,46 +455,6 @@ class Environment {
 
 }
 
-
-class Debug {
-
-  constructor() {
-    this._camera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 1);
-    this._geometry = new THREE.PlaneBufferGeometry();
-
-    const shadersPromises = [
-      loadFile('shaders/debug/vertex.glsl'),
-      loadFile('shaders/debug/fragment.glsl')
-    ];
-
-    this.loaded = Promise.all(shadersPromises)
-      .then(([vertexShader, fragmentShader]) => {
-        this._material = new THREE.RawShaderMaterial({
-          uniforms: {
-            texture: { value: null },
-          },
-          vertexShader: vertexShader,
-          fragmentShader: fragmentShader,
-        });
-
-        this._mesh = new THREE.Mesh(this._geometry, this._material);
-        this._material.transparent = true;
-      });
-  }
-
-  draw(renderer, texture) {
-    this._material.uniforms['texture'].value = texture;
-
-    const oldTarget = renderer.getRenderTarget();
-
-    renderer.setRenderTarget(null);
-    renderer.render(this._mesh, this._camera);
-
-    renderer.setRenderTarget(oldTarget);
-  }
-
-}
-
 const waterSimulation = new WaterSimulation();
 
 const water = new Water();
@@ -502,9 +462,6 @@ const water = new Water();
 const environmentMap = new EnvironmentMap();
 const environment = new Environment();
 const caustics = new Caustics();
-
-const debug = new Debug();
-
 
 // Main rendering loop
 function animate() {
@@ -524,9 +481,6 @@ function animate() {
     caustics.setTextures(waterTexture, environmentMapTexture);
     caustics.render(renderer);
     const causticsTexture = caustics.target.texture;
-
-    // debug.draw(renderer, environmentMapTexture);
-    // debug.draw(renderer, causticsTexture);
 
     environment.updateCaustics(causticsTexture);
 
@@ -646,7 +600,6 @@ const loaded = [
   environmentMap.loaded,
   environment.loaded,
   caustics.loaded,
-  debug.loaded,
   sharkLoaded,
   rockLoaded,
 ];

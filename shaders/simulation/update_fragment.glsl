@@ -19,7 +19,7 @@ void main() {
     texture2D(texture, coord - dy).r +
     texture2D(texture, coord + dx).r +
     texture2D(texture, coord + dy).r
-  ) * 0.25;
+  ) * 0.25;//divide by 4
 
   /* change the velocity to move toward the average */
   info.g += (average - info.r) * 2.0;
