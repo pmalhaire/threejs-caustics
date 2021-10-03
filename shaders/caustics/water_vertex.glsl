@@ -17,13 +17,14 @@ const float eta = 0.7504;
 // if after this number of attempts we did not find the intersection, the result will be wrong.
 const int MAX_ITERATIONS = 50;
 
+// water height
+const float waterHeight = 0.8;
 
 void main() {
   vec4 waterInfo = texture2D(water, position.xy * 0.5 + 0.5);
 
   // The water position is the vertex position on which we apply the height-map
-  // TODO Remove the ugly hardcoded +0.8 for the water position
-  vec3 waterPosition = vec3(position.xy, position.z + waterInfo.r + 0.8);
+  vec3 waterPosition = vec3(position.xy, position.z + waterInfo.r + waterHeight);
   vec3 waterNormal = normalize(vec3(waterInfo.b, sqrt(1.0 - dot(waterInfo.ba, waterInfo.ba)), waterInfo.a)).xzy;
 
   // This is the initial position: the ray starting point
@@ -33,6 +34,7 @@ void main() {
   vec4 projectedWaterPosition = projectionMatrix * viewMatrix * vec4(waterPosition, 1.);
 
   vec2 currentPosition = projectedWaterPosition.xy;
+  // transform coods from [-1.,1] to [0, 1.]
   vec2 coords = 0.5 + 0.5 * currentPosition;
 
   vec3 refracted = refract(light, waterNormal, eta);

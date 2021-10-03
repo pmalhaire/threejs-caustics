@@ -5,6 +5,7 @@ uniform sampler2D texture;
 uniform vec2 delta;
 varying vec2 coord;
 
+const float velocityAttenuation = 0.91;
 
 void main() {
   /* get vertex info */
@@ -24,7 +25,7 @@ void main() {
   info.g += (average - info.r) * 2.0;
 
   /* attenuate the velocity a little so waves do not last forever */
-  info.g *= 0.91;
+  info.g *= velocityAttenuation;
 
   /* move the vertex along the velocity */
   info.r += info.g;
