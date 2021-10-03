@@ -3,6 +3,13 @@ stats.showPanel(0);
 document.body.appendChild(stats.domElement);
 
 const canvas = document.getElementById('canvas');
+if (window.innerHeight > window.innerWidth) {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerWidth * 2 / 3;
+} else {
+  canvas.width = window.innerHeight * 3 / 2;
+  canvas.height = window.innerHeight;
+}
 
 const width = canvas.width;
 const height = canvas.height;
