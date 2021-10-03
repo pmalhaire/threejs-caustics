@@ -55,9 +55,9 @@ const controls = new THREE.OrbitControls(
 
 controls.target = new THREE.Vector3(0, 0, .8);
 
-controls.minPolarAngle = 0;
+controls.minPolarAngle = Math.PI / 6;
 controls.maxPolarAngle = Math.PI / 6;
-
+controls.enableRotate = false;
 controls.minDistance = 2.1;
 controls.maxDistance = 2.1;
 
@@ -120,18 +120,17 @@ const indices = new Uint32Array([
 // Environment
 
 const objLoader = new THREE.OBJLoader();
-let shark;
-const sharkLoaded = new Promise((resolve) => {
-  objLoader.load('assets/WhiteShark.obj', (sharkGeometry) => {
-    sharkGeometry = sharkGeometry.children[0].geometry;
-    sharkGeometry.computeVertexNormals();
-    const size = 0.05;
-    sharkGeometry.scale(size, size, size);
-    sharkGeometry.rotateX(Math.PI / 2.);
-    sharkGeometry.rotateZ(-Math.PI / 2.);
-    sharkGeometry.translate(0, 0, 0.4);
+let whale;
+const whaleLoaded = new Promise((resolve) => {
+  objLoader.load('assets/whale.obj', (whaleGeometry) => {
+    whaleGeometry = whaleGeometry.children[0].geometry;
+    whaleGeometry.computeVertexNormals();
+    const size = 0.001;
+    whaleGeometry.rotateX(-Math.PI / 6.);
+    whaleGeometry.scale(size, size, size);
+    whaleGeometry.translate(-.6, 1, -1);
 
-    shark = sharkGeometry;
+    whale = whaleGeometry;
     resolve();
   });
 });
@@ -408,7 +407,8 @@ class Environment {
           light: { value: light },
           caustics: { value: null },
           lightProjectionMatrix: { value: lightCamera.projectionMatrix },
-          lightViewMatrix: { value: lightCamera.matrixWorldInverse }
+          lightViewMatrix: { value: lightCamera.matrixWorldInverse },
+          note: { type: 'float', value: .4 },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -416,6 +416,10 @@ class Environment {
     });
   }
 
+
+  setNoteColor() {
+    this._material.uniforms['note'].value = currentNote;
+  }
   setGeometries(geometries) {
     this._meshes = [];
 
@@ -464,6 +468,7 @@ function animate() {
     const causticsTexture = caustics.target.texture;
 
     environment.updateCaustics(causticsTexture);
+    environment.setNoteColor();
 
     clock.start();
   }
@@ -507,7 +512,9 @@ function onMouseMove(event) {
   }
 }
 
+let currentNote = 0;
 function playNote(note) {
+  currentNote = notes.indexOf(note) / 10.0;
   const audio = document.querySelector(`audio[data-key="${note}"]`);
   audio.currentTime = 0;
   audio.play();
@@ -581,11 +588,11 @@ const loaded = [
   environmentMap.loaded,
   environment.loaded,
   caustics.loaded,
-  sharkLoaded,
+  whaleLoaded,
 ];
 
 Promise.all(loaded).then(() => {
-  const envGeometries = [shark];
+  const envGeometries = [whale];
 
   environmentMap.setGeometries(envGeometries);
   environment.setGeometries(envGeometries);
