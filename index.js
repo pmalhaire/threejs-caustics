@@ -57,10 +57,10 @@ const controls = new THREE.OrbitControls(
 controls.target = waterPosition;
 
 controls.minPolarAngle = 0;
-controls.maxPolarAngle = Math.PI / 2. - 0.1;
+controls.maxPolarAngle = Math.PI / 8;
 
-controls.minDistance = 1.5;
-controls.maxDistance = 3.;
+controls.minDistance = .5;
+controls.maxDistance = 1.;
 
 // Target for computing the water refraction
 const temporaryRenderTarget = new THREE.WebGLRenderTarget(width, height);
@@ -126,7 +126,8 @@ const sharkLoaded = new Promise((resolve) => {
   objLoader.load('assets/WhiteShark.obj', (sharkGeometry) => {
     sharkGeometry = sharkGeometry.children[0].geometry;
     sharkGeometry.computeVertexNormals();
-    sharkGeometry.scale(0.12, 0.12, 0.12);
+    const size = 0.05;
+    sharkGeometry.scale(size, size, size);
     sharkGeometry.rotateX(Math.PI / 2.);
     sharkGeometry.rotateZ(-Math.PI / 2.);
     sharkGeometry.translate(0, 0, 0.4);
@@ -142,13 +143,13 @@ const rockLoaded = new Promise((resolve) => {
   objLoader.load('assets/rock.obj', (rockGeometry) => {
     rockGeometry = rockGeometry.children[0].geometry;
     rockGeometry.computeVertexNormals();
-
+    const size = 0.01;
     rock1 = new THREE.BufferGeometry().copy(rockGeometry);
-    rock1.scale(0.05, 0.05, 0.02);
+    rock1.scale(size, size, size);
     rock1.translate(0.2, 0., 0.1);
 
     rock2 = new THREE.BufferGeometry().copy(rockGeometry);
-    rock2.scale(0.05, 0.05, 0.05);
+    rock2.scale(size, size, size);
     rock2.translate(-0.5, 0.5, 0.2);
     rock2.rotateZ(Math.PI / 2.);
 
