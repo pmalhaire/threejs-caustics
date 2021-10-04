@@ -14,18 +14,15 @@ if (window.innerHeight > window.innerWidth) {
 const width = canvas.width;
 const height = canvas.height;
 
-function requestFullScreen(element) {
-    // Supports most browsers and their versions.
-    var requestMethod = element.requestFullScreen || element.webkitRequestFullScreen || element.mozRequestFullScreen || element.msRequestFullScreen;
 
-    if (requestMethod) { // Native full screen.
-        requestMethod.call(element);
-    } else if (typeof window.ActiveXObject !== "undefined") { // Older IE.
-        var wscript = new ActiveXObject("WScript.Shell");
-        if (wscript !== null) {
-            wscript.SendKeys("{F11}");
-        }
-    }
+function openFullscreen() {
+  if (canvas.requestFullscreen) {
+    canvas.requestFullscreen();
+  } else if (canvas.webkitRequestFullscreen) { /* Safari */
+    canvas.webkitRequestFullscreen();
+  } else if (canvas.msRequestFullscreen) { /* IE11 */
+    canvas.msRequestFullscreen();
+  }
 }
 
 
@@ -577,8 +574,6 @@ function onKeyPressed(event) {
 
 function onTouch(event) {
   //console.log("touch", event);
-var elem = document.body; // Make the body go full screen.
-requestFullScreen(elem);
   event.preventDefault();
   var touches = event.changedTouches;
 
