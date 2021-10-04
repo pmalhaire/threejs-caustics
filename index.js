@@ -28,8 +28,6 @@ function requestFullScreen(element) {
     }
 }
 
-var elem = document.body; // Make the body go full screen.
-requestFullScreen(elem);
 
 // Colors
 const black = new THREE.Color('black');
@@ -579,6 +577,8 @@ function onKeyPressed(event) {
 
 function onTouch(event) {
   //console.log("touch", event);
+var elem = document.body; // Make the body go full screen.
+requestFullScreen(elem);
   event.preventDefault();
   var touches = event.changedTouches;
 
