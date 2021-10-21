@@ -1,7 +1,11 @@
 // show stats for quick debug
-const stats = new Stats();
-stats.showPanel(0);
-document.body.appendChild(stats.domElement);
+// const stats = new Stats();
+// stats.showPanel(0);
+// document.body.appendChild(stats.domElement);
+
+// show spector
+// var spector = new SPECTOR.Spector();
+// spector.displayUI();
 
 const canvas = document.getElementById('canvas');
 if (window.innerHeight > window.innerWidth) {
@@ -418,7 +422,8 @@ const caustics = new Caustics();
 
 // Main rendering loop
 function animate() {
-  stats.begin();
+  //debug stats
+  //stats.begin();
 
   // Update the water
   if (clock.getElapsedTime() > 0.032) {
@@ -461,7 +466,8 @@ function animate() {
 
   controls.update();
 
-  stats.end();
+  //debug stats
+  //stats.end();
 
   window.requestAnimationFrame(animate);
 }
@@ -490,6 +496,8 @@ function playNote(note) {
 
 function removeTransition(e) {
   if (e.propertyName !== "transform") return;
+  // the coordinate here are wrong in full screen mode
+  //console.log("xoff", widthOffset, "yoff", heightOffset, "m", mouse.x, mouse.y, "e", event)
   this.classList.remove("playing");
 }
 
@@ -577,3 +585,5 @@ Promise.all(loaded).then(() => {
 
   animate();
 });
+  // use to see the cube used for env map
+  //scene.add(cube);
