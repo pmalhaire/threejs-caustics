@@ -2,8 +2,9 @@ precision highp float;
 precision highp int;
 
 uniform sampler2D texture;
-uniform vec2 delta;
 varying vec2 coord;
+// delta used to calculate neighbors
+const vec2 delta = vec2(1.0/216.0, 1.0/216.0);
 
 const float velocityAttenuation = 0.91;
 

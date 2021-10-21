@@ -148,7 +148,6 @@ class WaterSimulation {
 
         const updateMaterial = new THREE.RawShaderMaterial({
           uniforms: {
-            delta: { value: [1 / 216, 1 / 216] },  // TODO: Remove this useless uniform and hardcode it in shaders?
             texture: { value: null },
           },
           vertexShader: vertexShader,
