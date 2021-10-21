@@ -1,3 +1,4 @@
+// show stats for quick debug
 const stats = new Stats();
 stats.showPanel(0);
 document.body.appendChild(stats.domElement);
@@ -122,8 +123,8 @@ class WaterSimulation {
 
     this._geometry = new THREE.PlaneBufferGeometry(waterScale, waterScale);
 
-    this._targetA = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
-    this._targetB = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
+    this._targetA = new THREE.WebGLRenderTarget(width, height, { type: THREE.FloatType });
+    this._targetB = new THREE.WebGLRenderTarget(width, height, { type: THREE.FloatType });
     this.target = this._targetA;
 
     const shadersPromises = [
@@ -288,7 +289,7 @@ class EnvironmentMap {
 class Caustics {
 
   constructor() {
-    this.target = new THREE.WebGLRenderTarget(waterSize, waterSize, { type: THREE.FloatType });
+    this.target = new THREE.WebGLRenderTarget(width, height, { type: THREE.FloatType });
 
     this._waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterSize, waterSize);
 
