@@ -42,19 +42,14 @@ function loadFile(filename) {
 
 // Constants
 const waterPosition = new THREE.Vector3(0, 0, 0.8);
-const near = 0.;
-const far = 2.;
 const waterSize = 1024;
 // number of segment in water
 const waterDepth = 1024;
 const envSize = 1024;
-const waterScale = 2;
+const waterScale = 4;
 // Create directional light
 // TODO Replace this by a THREE.DirectionalLight and use the provided matrix (check that it's an Orthographic matrix as expected)
 const light = [0., 0., -1.];
-const lightCamera = new THREE.OrthographicCamera(-1.2, 1.2, 1.2, -1.2, near, far);
-lightCamera.position.set(0., 0., 1.5);
-lightCamera.lookAt(0, 0, 0);
 
 // Create Renderer
 const scene = new THREE.Scene();
@@ -97,46 +92,6 @@ const targetmesh = new THREE.Mesh(targetgeometry);
 
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
-const vertices = new Float32Array([
-  -1, -1, -1,
-  -1, -1, 1,
-  -1, 1, -1,
-  -1, 1, 1,
-  1, -1, -1,
-  1, 1, -1,
-  1, -1, 1,
-  1, 1, 1,
-  -1, -1, -1,
-  1, -1, -1,
-  -1, -1, 1,
-  1, -1, 1,
-  -1, 1, -1,
-  -1, 1, 1,
-  1, 1, -1,
-  1, 1, 1,
-  -1, -1, -1,
-  -1, 1, -1,
-  1, -1, -1,
-  1, 1, -1,
-  -1, -1, 1,
-  1, -1, 1,
-  -1, 1, 1,
-  1, 1, 1
-]);
-const indices = new Uint32Array([
-  0, 1, 2,
-  2, 1, 3,
-  4, 5, 6,
-  6, 5, 7,
-  12, 13, 14,
-  14, 13, 15,
-  16, 17, 18,
-  18, 17, 19,
-  20, 21, 22,
-  22, 21, 23
-]);
-
-// Environment
 
 const objLoader = new THREE.OBJLoader();
 let whale;
@@ -155,22 +110,15 @@ const whaleLoaded = new Promise((resolve) => {
 });
 
 
-// Skybox
-const cubetextureloader = new THREE.CubeTextureLoader();
-
-const skybox = cubetextureloader.load([
-  'assets/TropicalSunnyDay_px.jpg', 'assets/TropicalSunnyDay_nx.jpg',
-  'assets/TropicalSunnyDay_py.jpg', 'assets/TropicalSunnyDay_ny.jpg',
-  'assets/TropicalSunnyDay_pz.jpg', 'assets/TropicalSunnyDay_nz.jpg',
-]);
-
-scene.background = skybox;
-
+// Background box
+const geometry = new THREE.BoxGeometry(waterScale, waterScale, waterScale);
+const cube = new THREE.Mesh(geometry);
+scene.background = cube;
 
 class WaterSimulation {
 
   constructor() {
-    this._camera = new THREE.OrthographicCamera(0, 1, 1, 0, 0, 2000);
+    this._camera = camera;
 
     this._geometry = new THREE.PlaneBufferGeometry(waterScale, waterScale);
 
@@ -235,7 +183,7 @@ class WaterSimulation {
 
     mesh.material.uniforms['texture'].value = _oldTarget.texture;
 
-    // TODO Camera is useless here, what should be done?
+    // render mesh for camera
     renderer.render(mesh, this._camera);
 
     renderer.setRenderTarget(oldTarget);
@@ -263,7 +211,7 @@ class Water {
             light: { value: light },
             water: { value: null },
             envMap: { value: null },
-            skybox: { value: skybox },
+            skybox: { value: cube },
           },
           vertexShader: vertexShader,
           fragmentShader: fragmentShader,
@@ -328,7 +276,7 @@ class EnvironmentMap {
     renderer.clear();
 
     for (let mesh of this._meshes) {
-      renderer.render(mesh, lightCamera);
+      renderer.render(mesh, camera);
     }
 
     renderer.setRenderTarget(oldTarget);
@@ -402,7 +350,7 @@ class Caustics {
     renderer.setClearColor(black, 0);
     renderer.clear();
 
-    renderer.render(this._waterMesh, lightCamera);
+    renderer.render(this._waterMesh, camera);
 
     renderer.setRenderTarget(oldTarget);
   }
@@ -425,13 +373,14 @@ class Environment {
         uniforms: {
           light: { value: light },
           caustics: { value: null },
-          lightProjectionMatrix: { value: lightCamera.projectionMatrix },
-          lightViewMatrix: { value: lightCamera.matrixWorldInverse },
+          lightProjectionMatrix: { value: camera.projectionMatrix },
+          lightViewMatrix: { value: camera.matrixWorldInverse },
           note: { type: 'float', value: .4 },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
       });
+
     });
   }
 
