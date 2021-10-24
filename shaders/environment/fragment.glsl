@@ -28,6 +28,7 @@ void main() {
   // Set the frag color
   float computedLightIntensity = 0.5;
 
+  // TODO explain those hard coded values
   computedLightIntensity += 0.2 * lightIntensity;
 
   // Retrieve caustics depth information

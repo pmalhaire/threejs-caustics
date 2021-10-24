@@ -7,17 +7,29 @@
 // var spector = new SPECTOR.Spector();
 // spector.displayUI();
 
+
 const canvas = document.getElementById('canvas');
+let width = canvas.width;
+let offsetWidth = 0;
+let height = canvas.height;
+let offsetHeight = 0;
+// const bRect = canvas.getBoundingClientRect();
+// console.log("bRect", bRect);
 if (window.innerHeight > window.innerWidth) {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerWidth * 2 / 3;
+  //canvas.width = window.innerWidth;
+  offsetHeight = canvas.height - canvas.width * 2 / 3;
+  canvas.height = canvas.width * 2 / 3;
+  width = canvas.width;
+  height = canvas.height;
 } else {
-  canvas.width = window.innerHeight * 3 / 2;
-  canvas.height = window.innerHeight;
+  offsetWidth = canvas.width - canvas.height * 3 / 2;
+  canvas.width = canvas.height * 3 / 2;
+  //canvas.height = window.innerHeight;
+  width = canvas.width;
+  height = canvas.height;
 }
 
-const width = canvas.width;
-const height = canvas.height;
+
 
 
 function openFullscreen() {
@@ -474,6 +486,7 @@ function animate() {
 
 function onMouseMove(event) {
   const rect = canvas.getBoundingClientRect();
+  //console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
   mouse.x = (event.clientX - rect.left) * 2 / width - 1;
   mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
 
@@ -538,6 +551,7 @@ function onTouch(event) {
     //console.log("touches", i, touches[i],touches[i].clientX,touches[i].clientY);
     const rect = canvas.getBoundingClientRect();
 
+    // todo fix offset on full screen
     mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
     mouse.y = - (touches[i].clientY - rect.top) * 2 / height + 1;
 

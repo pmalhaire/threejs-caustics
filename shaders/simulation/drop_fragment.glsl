@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 
-const float PI = 3.141592653589793;
+const float PI = 3.1415926535897932384626433832795;
 uniform sampler2D texture;
 uniform vec2 center;
 uniform float radius;
