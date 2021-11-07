@@ -17,8 +17,8 @@ const float eta = 0.7504;
 // if after this number of attempts we did not find the intersection, the result will be wrong.
 const int MAX_ITERATIONS = 50;
 
-// water height
-const float waterHeight = 0.8;
+// water height convert to uniform
+const float waterHeight = 0.1;
 
 const float waterSize = 1.0;
 

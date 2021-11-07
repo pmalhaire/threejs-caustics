@@ -59,7 +59,8 @@ function loadFile(filename) {
 }
 
 // Constants
-const waterPosition = new THREE.Vector3(0, 0, 0.8);
+const waterHeight = 0.1;
+const waterPosition = new THREE.Vector3(0, 0, waterHeight);
 const waterSize = 1024;
 // number of segment in water
 const waterDepth = 1024;
@@ -85,13 +86,13 @@ const controls = new THREE.OrbitControls(
   canvas
 );
 
-controls.target = new THREE.Vector3(0, 0, .8);
+controls.target = new THREE.Vector3(0, 0, waterHeight);
 
 controls.minPolarAngle = Math.PI / 6;
 controls.maxPolarAngle = Math.PI / 6;
 controls.enableRotate = false;
-controls.minDistance = 2.1;
-controls.maxDistance = 2.1;
+controls.minDistance = 2.4;
+controls.maxDistance = 2.4;
 
 // Target for computing the water refraction
 const temporaryRenderTarget = new THREE.WebGLRenderTarget(width, height);
@@ -111,24 +112,19 @@ const targetmesh = new THREE.Mesh(targetgeometry);
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 
-// place whales in a triamgle form
-const initialPos = .5;
-const posRange = 1.5;
+// place whales in a diagonal form
+const initialPos = .4;
+const posRange = 2.0 - 2.0 * initialPos;
 
 let whales = [];
 let whalesCount = 8;
+let whalesPosition = [];
 
 function whaleTranslateFromIndex(i) {
-  // todo fix monkey coded 1.4
-  // convert from [0,whalesCount[ to [-1.4,1.4]
-  let posX = 2.8 / 7.0 * i - 1.4;
-  let posY;
-  if (i < whalesCount / 2) {
-    posY = initialPos + posRange * (i % (whalesCount / 2)) / whalesCount
-  } else {
-    posY = initialPos + posRange * ((whalesCount / 2) - 1) / whalesCount;
-    posY -= posRange * (i % (whalesCount / 2)) / whalesCount;
-  }
+  // convert from [0,whalesCount[ to [-1,1]
+  let posX = initialPos + posRange / (whalesCount - 1) * i - 1;
+  let posY = initialPos + posRange / (whalesCount - 1) * i - 1;
+
   return { posX, posY };
 }
 
@@ -137,7 +133,7 @@ const whalesLoaded = new Promise((resolve) => {
   objLoader.load('assets/whale.obj', (whaleGeometry) => {
     whaleGeometry = whaleGeometry.children[0].geometry;
     whaleGeometry.computeVertexNormals();
-    const size = 0.001;
+    const size = 0.0005;
     //whaleGeometry.rotateX(-Math.PI / 6.);
 
     whaleGeometry.rotateZ(Math.PI / 2.);
@@ -146,7 +142,11 @@ const whalesLoaded = new Promise((resolve) => {
     for (var i = 0; i < whalesCount; i++) {
       let whale = whaleGeometry.clone();
       let { posX, posY } = whaleTranslateFromIndex(i);
-      whale.translate(posX, posY, -1);
+      whale.translate(posX, posY, 0);
+      whale.computeBoundingSphere();
+      let { x, y, z } = whale.boundingSphere.center;
+      whalesPosition.push({ x, y, z });
+      console.log("whale i:", i, "x y z", x, y, z);
       whales.push(whale)
     }
     resolve();
@@ -522,17 +522,40 @@ function onMouseMove(event) {
   const intersects = raycaster.intersectObject(targetmesh);
 
   for (let intersect of intersects) {
+    waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.01);
+  }
+}
+
+function onMouseDown(event) {
+  const rect = canvas.getBoundingClientRect();
+  console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
+  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
+  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObject(targetmesh);
+
+  for (let intersect of intersects) {
     waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
+    let digit = digitFromPos(intersect.point.x, intersect.point.y, intersect.point.z);
+    if (digit > 0) {
+      // console.log("computed digit", digit);
+      playNote(notes[digit - 1]);
+    }
   }
 }
 
 let currentWhalePos = -4.0;
 function whalePosFromNote(note) {
   let idx = notes.indexOf(note);
-  let { posX } = whaleTranslateFromIndex(idx);
-  //[-2,2]->[0,1]
-  return posX / 4.0 + 0.5
+  let { x } = whalesPosition[idx];
+  //[-1,1]->[0,1]
+  let matX = x / 2.0 + 0.5;
+  console.log("whalePosFromNote", note, x, matX)
+  return matX;
 }
+
 
 function playNote(note) {
   currentWhalePos = whalePosFromNote(note);
@@ -561,23 +584,28 @@ let notes = [
 
 let keys = [1, 2, 3, 4, 5, 6, 7, 8];
 
-// convert a drop digit to it's position
-// todo fix should be related to whale position
-function dropDigitToPosition(digit) {
-  let x = (digit - .1) / 4. - 1.1;
-  let y = 0.;
-  return { x, y }
-}
-
-function digitFromPosX(x) {
-  let digit = Math.floor((x + 1.1) * 4.0 + .1) + 1;
+function digitFromPos(targetX, targetY, targetZ) {
+  let digit = 0;
+  let min = 100.0;
+  let whaleX, whaleY;
+  for (let i = 0; i < whalesCount; i++) {
+    let { x, y, z } = whalesPosition[i];
+    let dist = (x - targetX) * (y - targetX) + (y - targetY) * (y - targetY) + (z - targetZ) * (z - targetZ)
+    if (dist < min) {
+      min = dist;
+      digit = i + 1;
+      whaleX = x;
+      whaleY = y;
+      whaleZ = z;
+    }
+  }
+  console.log("posWhale", whaleX, whaleY, whaleZ, "posinter", targetX, targetY, targetZ, "dist", min);
   if (!keys.includes(digit)) {
     console.error("invalid digit computed", digit)
     return -1
   }
   return digit;
 }
-
 
 function onKeyPressed(event) {
   let digit = parseInt(event.key)
@@ -586,8 +614,9 @@ function onKeyPressed(event) {
     if (event.repeat) {
       return
     }
-    let { x, y } = dropDigitToPosition(digit);
-    //console.log("draw", x, y);
+
+    let { x, y } = whalesPosition[digit - 1];
+    console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
     playNote(notes[digit - 1]);
   }
@@ -615,7 +644,7 @@ function onTouch(event) {
         return
       }
       waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-      let digit = digitFromPosX(intersect.point.x);
+      let digit = digitFromPos(intersect.point.x, intersect.point.y, intersect.point.z);
       if (digit > 0) {
         // console.log("computed digit", digit);
         playNote(notes[digit - 1]);
@@ -646,6 +675,7 @@ Promise.all(loaded).then(() => {
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
+  canvas.addEventListener('mousedown', { handleEvent: onMouseDown });
   canvas.addEventListener("touchstart", onTouch, false);
   canvas.addEventListener('keydown', { handleEvent: onKeyPressed });
 
