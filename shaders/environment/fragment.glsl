@@ -1,6 +1,6 @@
 uniform sampler2D caustics;
-// use the note to change the color
-uniform float note;
+// use the playingWhalePos to change the color of the playing whale
+uniform float playingWhalePos;
 
 varying float lightIntensity;
 varying vec3 lightPosition;
@@ -45,6 +45,12 @@ void main() {
   }
 
   gl_FragColor = vec4(underwaterColor * computedLightIntensity, 1.);
-  // experimental color changing
-  gl_FragColor.r += note;
+
+
+  // experimental color change of playing whale
+  float distFromPlayingWhale = abs(playingWhalePos - lightPosition.x);
+  if ( distFromPlayingWhale < .1 ){
+    gl_FragColor.r += .5-10.0*distFromPlayingWhale;
+  }
+
 }

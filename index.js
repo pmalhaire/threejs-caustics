@@ -7,6 +7,7 @@
 // var spector = new SPECTOR.Spector();
 // spector.displayUI();
 
+// TODO split this file
 
 const canvas = document.getElementById('canvas');
 let width = canvas.width;
@@ -110,18 +111,30 @@ const targetmesh = new THREE.Mesh(targetgeometry);
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 
+function whaleTranslateFromIndex(i) {
+  // todo fix monkey coded 1.4
+  // convert from [0,whalesCount] to [-1.4,1.4]
+  return 2.8 / 7.0 * i - 1.4;
+}
+
 const objLoader = new THREE.OBJLoader();
-let whale;
-const whaleLoaded = new Promise((resolve) => {
+let whales = [];
+let whalesCount = 8;
+const whalesLoaded = new Promise((resolve) => {
   objLoader.load('assets/whale.obj', (whaleGeometry) => {
     whaleGeometry = whaleGeometry.children[0].geometry;
     whaleGeometry.computeVertexNormals();
     const size = 0.001;
-    whaleGeometry.rotateX(-Math.PI / 6.);
-    whaleGeometry.scale(size, size, size);
-    whaleGeometry.translate(-.6, 1, -1);
+    //whaleGeometry.rotateX(-Math.PI / 6.);
 
-    whale = whaleGeometry;
+    whaleGeometry.rotateZ(Math.PI / 2.);
+    whaleGeometry.scale(size, size, size);
+    for (var i = 0; i < whalesCount; i++) {
+      console.log("creating whale", i)
+      let whale = whaleGeometry.clone();
+      whale.translate(whaleTranslateFromIndex(i), 1, -1);
+      whales.push(whale)
+    }
     resolve();
   });
 });
@@ -391,7 +404,7 @@ class Environment {
           caustics: { value: null },
           lightProjectionMatrix: { value: camera.projectionMatrix },
           lightViewMatrix: { value: camera.matrixWorldInverse },
-          note: { type: 'float', value: .4 },
+          playingWhalePos: { type: 'float', value: -4.0 },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -402,7 +415,7 @@ class Environment {
 
 
   setNoteColor() {
-    this._material.uniforms['note'].value = currentNote;
+    this._material.uniforms['playingWhalePos'].value = currentWhalePos;
   }
   setGeometries(geometries) {
     this._meshes = [];
@@ -499,9 +512,16 @@ function onMouseMove(event) {
   }
 }
 
-let currentNote = 0;
+let currentWhalePos = -4.0;
+function whalePosFromNote(note) {
+  let idx = notes.indexOf(note);
+  let pos = whaleTranslateFromIndex(idx);
+  //[-2,2]->[0,1]
+  return pos / 4.0 + 0.5
+}
+
 function playNote(note) {
-  currentNote = notes.indexOf(note) / 10.0;
+  currentWhalePos = whalePosFromNote(note);
   const audio = document.querySelector(`audio[data-key="${note}"]`);
   audio.currentTime = 0;
   audio.play();
@@ -514,6 +534,7 @@ function removeTransition(e) {
   this.classList.remove("playing");
 }
 
+// keep it to 8 notes
 let notes = [
   "A0",
   "B0",
@@ -522,24 +543,39 @@ let notes = [
   "E0",
   "F0",
   "G0",
-  "A1",
-  "B1"];
+  "A1"];
+
+let keys = [1, 2, 3, 4, 5, 6, 7, 8];
+
+// convert a drop Note to it's position
+function dropDigitToPosition(digit) {
+  let x = (digit - .1) / 4. - 1.1;
+  let y = 0.;
+  return { x, y }
+}
+
+function digitFromPosX(x) {
+  let digit = Math.floor((x + 1.1) * 4.0 + .1) + 1;
+  if (!keys.includes(digit)) {
+    console.error("invalid digit computed", digit)
+    return -1
+  }
+  return digit;
+}
+
 
 function onKeyPressed(event) {
-  let keys = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   let digit = parseInt(event.key)
   //console.log(event, digit)
   if (keys.includes(digit)) {
     if (event.repeat) {
       return
     }
-    let x = (digit - .1) / 4. - 1.1;
-    let y = 0.;
+    let { x, y } = dropDigitToPosition(digit);
     //console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
     playNote(notes[digit - 1]);
   }
-
 }
 
 function onTouch(event) {
@@ -564,9 +600,11 @@ function onTouch(event) {
         return
       }
       waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-      let digit = Math.floor((intersect.point.x + 1.1) * 4.0 + .1) + 1;
-      // console.log("computed digit", digit);
-      playNote(notes[digit - 1]);
+      let digit = digitFromPosX(intersect.point.x);
+      if (digit > 0) {
+        // console.log("computed digit", digit);
+        playNote(notes[digit - 1]);
+      }
     }
   }
 
@@ -578,11 +616,11 @@ const loaded = [
   environmentMap.loaded,
   environment.loaded,
   caustics.loaded,
-  whaleLoaded,
+  whalesLoaded,
 ];
 
 Promise.all(loaded).then(() => {
-  const envGeometries = [whale];
+  const envGeometries = whales;
 
   environmentMap.setGeometries(envGeometries);
   environment.setGeometries(envGeometries);
@@ -599,5 +637,3 @@ Promise.all(loaded).then(() => {
 
   animate();
 });
-  // use to see the cube used for env map
-  //scene.add(cube);
