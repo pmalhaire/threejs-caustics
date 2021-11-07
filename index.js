@@ -111,15 +111,28 @@ const targetmesh = new THREE.Mesh(targetgeometry);
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 
+// place whales in a triamgle form
+const initialPos = .5;
+const posRange = 1.5;
+
+let whales = [];
+let whalesCount = 8;
+
 function whaleTranslateFromIndex(i) {
   // todo fix monkey coded 1.4
-  // convert from [0,whalesCount] to [-1.4,1.4]
-  return 2.8 / 7.0 * i - 1.4;
+  // convert from [0,whalesCount[ to [-1.4,1.4]
+  let posX = 2.8 / 7.0 * i - 1.4;
+  let posY;
+  if (i < whalesCount / 2) {
+    posY = initialPos + posRange * (i % (whalesCount / 2)) / whalesCount
+  } else {
+    posY = initialPos + posRange * ((whalesCount / 2) - 1) / whalesCount;
+    posY -= posRange * (i % (whalesCount / 2)) / whalesCount;
+  }
+  return { posX, posY };
 }
 
 const objLoader = new THREE.OBJLoader();
-let whales = [];
-let whalesCount = 8;
 const whalesLoaded = new Promise((resolve) => {
   objLoader.load('assets/whale.obj', (whaleGeometry) => {
     whaleGeometry = whaleGeometry.children[0].geometry;
@@ -129,10 +142,11 @@ const whalesLoaded = new Promise((resolve) => {
 
     whaleGeometry.rotateZ(Math.PI / 2.);
     whaleGeometry.scale(size, size, size);
+
     for (var i = 0; i < whalesCount; i++) {
-      console.log("creating whale", i)
       let whale = whaleGeometry.clone();
-      whale.translate(whaleTranslateFromIndex(i), 1, -1);
+      let { posX, posY } = whaleTranslateFromIndex(i);
+      whale.translate(posX, posY, -1);
       whales.push(whale)
     }
     resolve();
@@ -515,9 +529,9 @@ function onMouseMove(event) {
 let currentWhalePos = -4.0;
 function whalePosFromNote(note) {
   let idx = notes.indexOf(note);
-  let pos = whaleTranslateFromIndex(idx);
+  let { posX } = whaleTranslateFromIndex(idx);
   //[-2,2]->[0,1]
-  return pos / 4.0 + 0.5
+  return posX / 4.0 + 0.5
 }
 
 function playNote(note) {
@@ -547,7 +561,8 @@ let notes = [
 
 let keys = [1, 2, 3, 4, 5, 6, 7, 8];
 
-// convert a drop Note to it's position
+// convert a drop digit to it's position
+// todo fix should be related to whale position
 function dropDigitToPosition(digit) {
   let x = (digit - .1) / 4. - 1.1;
   let y = 0.;
