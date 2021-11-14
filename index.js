@@ -29,7 +29,7 @@ if (window.innerHeight > window.innerWidth) {
 
 
 
-
+let fullScreen = false
 function openFullscreen() {
   if (canvas.requestFullscreen) {
     canvas.requestFullscreen();
@@ -38,6 +38,7 @@ function openFullscreen() {
   } else if (canvas.msRequestFullscreen) { /* IE11 */
     canvas.msRequestFullscreen();
   }
+  fullScreen = true;
 }
 
 
@@ -511,12 +512,21 @@ function animate() {
   window.requestAnimationFrame(animate);
 }
 
-function onMouseMove(event) {
-  const rect = canvas.getBoundingClientRect();
-  //console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
-  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
-  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+function mouseFromEvent(event) {
+  if (fullScreen) {
+    //console.log("event:", event.clientX, event.clientY, "rect:", window.innerWidth, window.innerHeight);
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+  } else {
+    const rect = canvas.getBoundingClientRect();
+    //console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
+    mouse.x = (event.clientX - rect.left) * 2 / width - 1;
+    mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+  }
+}
 
+function onMouseMove(event) {
+  mouseFromEvent(event);
   raycaster.setFromCamera(mouse, camera);
 
   const intersects = raycaster.intersectObject(targetmesh);
@@ -532,7 +542,7 @@ function whalePosFromNote(note) {
   let { x } = whalesPosition[idx];
   //[-1,1]->[0,1]
   let matX = x / 2.0 + 0.5;
-  console.log("whalePosFromNote", note, x, matX)
+  //console.log("whalePosFromNote", note, x, matX)
   return matX;
 }
 
@@ -585,7 +595,7 @@ function digitFromPos(mouse) {
   }
 
   if (!projectedPos) {
-    console.log("no intersect");
+    console.error("no intersect");
     return;
   }
   let digit = 0;
@@ -640,17 +650,13 @@ function onKeyPressed(event) {
 
 function playNoteAndDropFromMouse(mouse) {
 
-  var vector = new THREE.Vector3(mouse.x, mouse.y, 1.0).unproject(camera);
-  console.log("unprojected", vector);
-  console.log("camera", camera);
-
   raycaster.setFromCamera(mouse, camera);
 
   const intersects = raycaster.intersectObject(targetmesh);
 
   for (let intersect of intersects) {
     waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-    console.log("mouse", mouse)
+
     let digit = digitFromPos(mouse);
     if (digit > 0) {
       // console.log("computed digit", digit);
@@ -662,10 +668,7 @@ function playNoteAndDropFromMouse(mouse) {
 }
 
 function onMouseDown(event) {
-  const rect = canvas.getBoundingClientRect();
-  console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
-  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
-  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+  mouseFromEvent(event)
 
   playNoteAndDropFromMouse(mouse);
 }
@@ -678,12 +681,8 @@ function onTouch(event) {
 
   for (var i = 0; i < touches.length; i++) {
     //console.log("touches", i, touches[i],touches[i].clientX,touches[i].clientY);
-    const rect = canvas.getBoundingClientRect();
 
-    // todo fix offset on full screen
-    mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
-    mouse.y = - (touches[i].clientY - rect.top) * 2 / height + 1;
-
+    mouseFromEvent(touches[i]);
     playNoteAndDropFromMouse(mouse);
   }
 
