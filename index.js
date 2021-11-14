@@ -14,10 +14,8 @@ let width = canvas.width;
 let offsetWidth = 0;
 let height = canvas.height;
 let offsetHeight = 0;
-// const bRect = canvas.getBoundingClientRect();
-// console.log("bRect", bRect);
+
 if (window.innerHeight > window.innerWidth) {
-  //canvas.width = window.innerWidth;
   offsetHeight = canvas.height - canvas.width * 2 / 3;
   canvas.height = canvas.width * 2 / 3;
   width = canvas.width;
@@ -25,7 +23,6 @@ if (window.innerHeight > window.innerWidth) {
 } else {
   offsetWidth = canvas.width - canvas.height * 3 / 2;
   canvas.width = canvas.height * 3 / 2;
-  //canvas.height = window.innerHeight;
   width = canvas.width;
   height = canvas.height;
 }
@@ -709,49 +706,8 @@ Promise.all(loaded).then(() => {
 
   environment.addTo(scene);
 
-  //const points = [];
-  //const dist = 0.1;
-  // here I have world dir
-  // to get the whale dir looking from y
-  // |water pos    \
-  // |^             \ world dir
-  // || waterheight  \
-  // |v               \
-  // |whale pos        \
-  // h = whaterHeight/cos(angle worldir waterpos-whalepos)
-
-  // const worldDir = camera.getWorldDirection();
-  // worldDir.setLength(dist);
-  // points.push(new THREE.Vector3(0, 0, 0));
-  // points.push(worldDir);
-  // console.log(worldDir);
-  // for (let i = 0; i < whalesPosition.length; i++) {
-  //   const material = new THREE.LineBasicMaterial({
-  //     color: 0x00ff00
-  //   });
-  //   const points = [];
-  //   let { x, y, z } = whalesPosition[i];
-  //   points.push(new THREE.Vector3(x, y, z));
-  //   points.push(new THREE.Vector3(x, y, waterHeight));
-
-  //   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-
-  //   const line = new THREE.Line(geometry, material);
-  //   scene.add(line);
-  // }
-  // const material = new THREE.LineBasicMaterial({
-  //   color: 0x00ff00
-  // });
-
-
-  //const geometry = new THREE.BufferGeometry().setFromPoints(points);
-
-  //const line = new THREE.Line(geometry, material);
-  //scene.add(line);
-
   scene.add(water.mesh);
-  // console.log("scene", scene);
-  // console.log("environment", environment);
+
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
