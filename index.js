@@ -115,7 +115,7 @@ const whalePlaneMesh = new THREE.Mesh(targetgeometry);
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 
 // place whales in a diagonal form
-const initialPos = .4;
+const initialPos = .1;
 const posRange = 2.0 - 2.0 * initialPos;
 
 let whales = [];
@@ -125,7 +125,11 @@ let whalesPosition = [];
 function whaleTranslateFromIndex(i) {
   // convert from [0,whalesCount[ to [-1,1]
   let posX = initialPos + posRange / (whalesCount - 1) * i - 1;
-  let posY = initialPos + posRange / (whalesCount - 1) * i - 1;
+  let posY = initialPos + .4 + posRange / (whalesCount - 1) * i - 1;
+
+  if (i >= whalesCount / 2) {
+    posY = initialPos + .4 + posRange / (whalesCount - 1) * ((whalesCount - 1) - i) - 1;
+  }
 
   return { posX, posY };
 }
@@ -575,16 +579,6 @@ let notes = [
 let keys = [1, 2, 3, 4, 5, 6, 7, 8];
 
 function digitFromPos(mouse) {
-  //const points = [];
-  //const dist = 0.1;
-  // here I have world dir
-  // to get the whale dir looking from y
-  // |water pos    \
-  // |^             \ world dir
-  // || waterheight  \
-  // |v               \
-  // |whale pos        \
-  // h = whaterHeight/cos(angle worldir waterpos-whalepos)
 
   raycaster.setFromCamera(mouse, camera);
 
