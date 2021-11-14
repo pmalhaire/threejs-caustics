@@ -1,6 +1,7 @@
 uniform sampler2D caustics;
-// use the playingWhalePosX to change the color of the playing whale
-uniform float playingWhalePosX;
+// use the playingWhalePos to change the color of the playing whale
+uniform vec3 playingWhalePos;
+uniform float rand;
 
 varying float lightIntensity;
 varying vec3 lightPosition;
@@ -48,11 +49,19 @@ void main() {
 
 
   // experimental color change of playing whale
-  float distFromPlayingWhale = abs(playingWhalePosX - lightPosition.x);
-  if ( distFromPlayingWhale < .1 ){
-    gl_FragColor.g += .5-10.0*distFromPlayingWhale;
-    gl_FragColor.b -= .5-10.0*distFromPlayingWhale;
-    gl_FragColor.r -= .5-10.0*distFromPlayingWhale;
+  float distFromPlayingWhale = abs(distance(playingWhalePos, lightPosition));
+  if ( distFromPlayingWhale < .6 ){
+    // meta random
+    if (fract(rand*1000000.0) > 0.5) {
+       // red more
+      gl_FragColor.r += rand * (1.0 - distFromPlayingWhale/.6);
+      gl_FragColor.g -= 1.0 - distFromPlayingWhale/.6;
+    } else {
+      // green more
+      gl_FragColor.g += rand * (1.0 - distFromPlayingWhale/.6);
+      gl_FragColor.r -= 1.0 - distFromPlayingWhale/.6;
+    }
+    gl_FragColor.b -= 1.0 - distFromPlayingWhale/.6;
   }
 
 }

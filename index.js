@@ -423,6 +423,7 @@ class Environment {
     ];
 
     this._meshes = [];
+    this.lastpos = null;
 
     this.loaded = Promise.all(shadersPromises).then(([vertexShader, fragmentShader]) => {
       this._material = new THREE.ShaderMaterial({
@@ -431,7 +432,8 @@ class Environment {
           caustics: { value: null },
           lightProjectionMatrix: { value: camera.projectionMatrix },
           lightViewMatrix: { value: camera.matrixWorldInverse },
-          playingWhalePosX: { type: 'float', value: -4.0 },
+          playingWhalePos: { type: 'vec3', value: [0, 0, 0] },
+          rand: { type: 'float', value: 1.0 }
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -442,7 +444,12 @@ class Environment {
 
 
   setNoteColor() {
-    this._material.uniforms['playingWhalePosX'].value = currentWhalePos;
+    //console.log(currentWhalePos);
+    if (this.lastpos != currentWhalePos) {
+      this._material.uniforms['playingWhalePos'].value = currentWhalePos;
+      this._material.uniforms['rand'].value = Math.random();
+      this.lastpos = currentWhalePos;
+    }
   }
   setGeometries(geometries) {
     this._meshes = [];
@@ -548,14 +555,16 @@ function onMouseMove(event) {
   }
 }
 
-let currentWhalePos = -4.0;
+let currentWhalePos = [0, 0, 0];
 function whalePosFromNote(note) {
   let idx = notes.indexOf(note);
-  let { x } = whalesPosition[idx];
+  let { x, y, z } = whalesPosition[idx];
   //[-1,1]->[0,1]
   let matX = x / 2.0 + 0.5;
+  let matY = y / 2.0 + 0.5;
+  let matZ = z / 2.0 + 0.5;
   //console.log("whalePosFromNote", note, x, matX)
-  return matX;
+  return [matX, matY, matZ];
 }
 
 
