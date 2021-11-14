@@ -91,8 +91,8 @@ controls.target = new THREE.Vector3(0, 0, waterHeight);
 controls.minPolarAngle = Math.PI / 6;
 controls.maxPolarAngle = Math.PI / 6;
 controls.enableRotate = false;
-controls.minDistance = 2.4;
-controls.maxDistance = 2.4;
+controls.minDistance = 2.7;
+controls.maxDistance = 2.7;
 
 // Target for computing the water refraction
 const temporaryRenderTarget = new THREE.WebGLRenderTarget(width, height);
@@ -108,6 +108,10 @@ for (let vertex of targetgeometry.vertices) {
   vertex.z = waterPosition.z;
 }
 const targetmesh = new THREE.Mesh(targetgeometry);
+
+// whale plane
+const whalePlaneGeometry = new THREE.PlaneGeometry(waterScale, waterScale);
+const whalePlaneMesh = new THREE.Mesh(targetgeometry);
 
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
@@ -134,7 +138,6 @@ const whalesLoaded = new Promise((resolve) => {
     whaleGeometry = whaleGeometry.children[0].geometry;
     whaleGeometry.computeVertexNormals();
     const size = 0.0005;
-    //whaleGeometry.rotateX(-Math.PI / 6.);
 
     whaleGeometry.rotateZ(Math.PI / 2.);
     whaleGeometry.scale(size, size, size);
@@ -146,7 +149,7 @@ const whalesLoaded = new Promise((resolve) => {
       whale.computeBoundingSphere();
       let { x, y, z } = whale.boundingSphere.center;
       whalesPosition.push({ x, y, z });
-      console.log("whale i:", i, "x y z", x, y, z);
+      //console.log("whale i:", i, "x y z", x, y, z);
       whales.push(whale)
     }
     resolve();
@@ -526,26 +529,6 @@ function onMouseMove(event) {
   }
 }
 
-function onMouseDown(event) {
-  const rect = canvas.getBoundingClientRect();
-  console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
-  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
-  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
-
-  raycaster.setFromCamera(mouse, camera);
-
-  const intersects = raycaster.intersectObject(targetmesh);
-
-  for (let intersect of intersects) {
-    waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-    let digit = digitFromPos(intersect.point.x, intersect.point.y, intersect.point.z);
-    if (digit > 0) {
-      // console.log("computed digit", digit);
-      playNote(notes[digit - 1]);
-    }
-  }
-}
-
 let currentWhalePos = -4.0;
 function whalePosFromNote(note) {
   let idx = notes.indexOf(note);
@@ -584,13 +567,38 @@ let notes = [
 
 let keys = [1, 2, 3, 4, 5, 6, 7, 8];
 
-function digitFromPos(targetX, targetY, targetZ) {
+function digitFromPos(mouse) {
+  //const points = [];
+  //const dist = 0.1;
+  // here I have world dir
+  // to get the whale dir looking from y
+  // |water pos    \
+  // |^             \ world dir
+  // || waterheight  \
+  // |v               \
+  // |whale pos        \
+  // h = whaterHeight/cos(angle worldir waterpos-whalepos)
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObject(whalePlaneMesh);
+  var projectedPos;
+  for (let intersect of intersects) {
+    projectedPos = new THREE.Vector3(intersect.point.x, intersect.point.y, intersect.point.z);
+  }
+
+  if (!projectedPos) {
+    console.log("no intersect");
+    return;
+  }
   let digit = 0;
   let min = 100.0;
-  let whaleX, whaleY;
+  let whaleX, whaleY, whaleZ;
+  //console.log(whalesPosition);
   for (let i = 0; i < whalesCount; i++) {
     let { x, y, z } = whalesPosition[i];
-    let dist = (x - targetX) * (y - targetX) + (y - targetY) * (y - targetY) + (z - targetZ) * (z - targetZ)
+    let whalePos = new THREE.Vector3(x, y, z);
+    let dist = whalePos.distanceTo(projectedPos);
     if (dist < min) {
       min = dist;
       digit = i + 1;
@@ -599,7 +607,18 @@ function digitFromPos(targetX, targetY, targetZ) {
       whaleZ = z;
     }
   }
-  console.log("posWhale", whaleX, whaleY, whaleZ, "posinter", targetX, targetY, targetZ, "dist", min);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x00ff00
+  });
+  // const points = [];
+  // points.push(projectedPos);
+  // points.push(new THREE.Vector3(whaleX, whaleY, whaleZ));
+
+  // const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  // const drawLine = new THREE.Line(geometry, material);
+  // scene.add(drawLine);
+  //console.log("posWhale", whaleX, whaleY, whaleZ, "posinter", targetX, targetY, targetZ, "dist", min);
   if (!keys.includes(digit)) {
     console.error("invalid digit computed", digit)
     return -1
@@ -616,11 +635,44 @@ function onKeyPressed(event) {
     }
 
     let { x, y } = whalesPosition[digit - 1];
-    console.log("draw", x, y);
+    //console.log("draw", x, y);
     waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
     playNote(notes[digit - 1]);
   }
 }
+
+function playNoteAndDropFromMouse(mouse) {
+
+  var vector = new THREE.Vector3(mouse.x, mouse.y, 1.0).unproject(camera);
+  console.log("unprojected", vector);
+  console.log("camera", camera);
+
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObject(targetmesh);
+
+  for (let intersect of intersects) {
+    waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
+    console.log("mouse", mouse)
+    let digit = digitFromPos(mouse);
+    if (digit > 0) {
+      // console.log("computed digit", digit);
+      playNote(notes[digit - 1]);
+    }
+    // stop at first intersect
+    return;
+  }
+}
+
+function onMouseDown(event) {
+  const rect = canvas.getBoundingClientRect();
+  console.log("event:", event.clientX, event.clientY, "rect:", rect.left, rect.top, "width", width, "height", height);
+  mouse.x = (event.clientX - rect.left) * 2 / width - 1;
+  mouse.y = - (event.clientY - rect.top) * 2 / height + 1;
+
+  playNoteAndDropFromMouse(mouse);
+}
+
 
 function onTouch(event) {
   //console.log("touch", event);
@@ -635,21 +687,7 @@ function onTouch(event) {
     mouse.x = (touches[i].clientX - rect.left) * 2 / width - 1;
     mouse.y = - (touches[i].clientY - rect.top) * 2 / height + 1;
 
-    raycaster.setFromCamera(mouse, camera);
-
-    const intersects = raycaster.intersectObject(targetmesh);
-
-    for (let intersect of intersects) {
-      if (event.repeat) {
-        return
-      }
-      waterSimulation.addDrop(renderer, intersect.point.x, intersect.point.y, 0.03, 0.02);
-      let digit = digitFromPos(intersect.point.x, intersect.point.y, intersect.point.z);
-      if (digit > 0) {
-        // console.log("computed digit", digit);
-        playNote(notes[digit - 1]);
-      }
-    }
+    playNoteAndDropFromMouse(mouse);
   }
 
 }
@@ -670,8 +708,50 @@ Promise.all(loaded).then(() => {
   environment.setGeometries(envGeometries);
 
   environment.addTo(scene);
-  scene.add(water.mesh);
 
+  //const points = [];
+  //const dist = 0.1;
+  // here I have world dir
+  // to get the whale dir looking from y
+  // |water pos    \
+  // |^             \ world dir
+  // || waterheight  \
+  // |v               \
+  // |whale pos        \
+  // h = whaterHeight/cos(angle worldir waterpos-whalepos)
+
+  // const worldDir = camera.getWorldDirection();
+  // worldDir.setLength(dist);
+  // points.push(new THREE.Vector3(0, 0, 0));
+  // points.push(worldDir);
+  // console.log(worldDir);
+  // for (let i = 0; i < whalesPosition.length; i++) {
+  //   const material = new THREE.LineBasicMaterial({
+  //     color: 0x00ff00
+  //   });
+  //   const points = [];
+  //   let { x, y, z } = whalesPosition[i];
+  //   points.push(new THREE.Vector3(x, y, z));
+  //   points.push(new THREE.Vector3(x, y, waterHeight));
+
+  //   const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  //   const line = new THREE.Line(geometry, material);
+  //   scene.add(line);
+  // }
+  // const material = new THREE.LineBasicMaterial({
+  //   color: 0x00ff00
+  // });
+
+
+  //const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+  //const line = new THREE.Line(geometry, material);
+  //scene.add(line);
+
+  scene.add(water.mesh);
+  // console.log("scene", scene);
+  // console.log("environment", environment);
   caustics.setDeltaEnvTexture(1. / environmentMap.size);
 
   canvas.addEventListener('mousemove', { handleEvent: onMouseMove });
