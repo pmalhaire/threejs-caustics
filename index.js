@@ -423,7 +423,7 @@ class Environment {
           caustics: { value: null },
           lightProjectionMatrix: { value: camera.projectionMatrix },
           lightViewMatrix: { value: camera.matrixWorldInverse },
-          playingWhalePos: { type: 'float', value: -4.0 },
+          playingWhalePosX: { type: 'float', value: -4.0 },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -434,7 +434,7 @@ class Environment {
 
 
   setNoteColor() {
-    this._material.uniforms['playingWhalePos'].value = currentWhalePos;
+    this._material.uniforms['playingWhalePosX'].value = currentWhalePos;
   }
   setGeometries(geometries) {
     this._meshes = [];

@@ -50,7 +50,9 @@ void main() {
   // experimental color change of playing whale
   float distFromPlayingWhale = abs(playingWhalePos - lightPosition.x);
   if ( distFromPlayingWhale < .1 ){
-    gl_FragColor.r += .5-10.0*distFromPlayingWhale;
+    gl_FragColor.g += .5-10.0*distFromPlayingWhale;
+    gl_FragColor.b -= .5-10.0*distFromPlayingWhale;
+    gl_FragColor.r -= .5-10.0*distFromPlayingWhale;
   }
 
 }
