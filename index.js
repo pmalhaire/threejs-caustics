@@ -114,11 +114,11 @@ const whalePlaneMesh = new THREE.Mesh(targetgeometry);
 // Geometries
 const waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterDepth, waterDepth);
 
-// place whales in a diagonal form
+// place whales triangle form
 const initialPosX = 0.1;
-const initialPosY = .7;
+const initialPosY = .5;
 const posRangeX = 1.8;
-const posRangeY = 2.0;
+const posRangeY = 3.0;
 
 let whales = [];
 let whalesCount = 8;
@@ -128,6 +128,12 @@ function whaleTranslateFromIndex(i) {
   // convert from [0,whalesCount[ to [-1,1]
   let posX = initialPosX + posRangeX / (whalesCount - 1) * i - 1;
   let posY = initialPosY + posRangeY / (whalesCount - 1) * i - 1;
+
+  if (i == whalesCount / 2 - 1) {
+    posX -= .05
+  } else if (i == whalesCount / 2) {
+    posX += .05
+  }
 
   if (i >= whalesCount / 2) {
     posY = initialPosY + posRangeY / (whalesCount - 1) * ((whalesCount - 1) - i) - 1;
