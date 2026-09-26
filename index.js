@@ -238,18 +238,115 @@ function resize() {
   }
   halfV *= zoom;
   camera.position.z = waterHeight + distance * Math.cos(tilt);
-
-  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfV));
   camera.aspect = aspect;
-  camera.lookAt(cameraTarget);
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld();
+  cameraBase.position.copy(camera.position);
+  cameraBase.halfV = halfV;
 
   renderer.setSize(w, h, false);
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   temporaryRenderTarget.setSize(size.x, size.y);
 
+  // The whales keep to the default framing, whatever the user's zoom
+  applyView(defaultView);
   updateSwimArea(w, h);
+  applyView(view);
+}
+
+// ---------------------------------------------------------------------------
+// User view: zoom and pan on top of the default framing
+// ---------------------------------------------------------------------------
+
+const cameraBase = { position: new THREE.Vector3(), halfV: 1 };
+const defaultView = { zoom: 1, x: 0, y: 0 };
+const MAX_ZOOM = 4;
+// Shown view, and the one it eases towards (buttons, keys, reset)
+const view = { ...defaultView };
+const viewGoal = { ...defaultView };
+
+// Zoom narrows the field of view (the perspective stays that of the default
+// camera); pan slides the camera and its target over the water.
+function applyView(state) {
+  camera.position.set(cameraBase.position.x + state.x, cameraBase.position.y + state.y, cameraBase.position.z);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(cameraBase.halfV / state.zoom));
+  camera.lookAt(cameraTarget.x + state.x, cameraTarget.y + state.y, cameraTarget.z);
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+}
+
+// The further in, the further the view may slide, always over the sea
+function clampView(state) {
+  state.zoom = Math.min(MAX_ZOOM, Math.max(1, state.zoom));
+  const limit = swimRadius * (1 - 1 / state.zoom);
+  const length = Math.hypot(state.x, state.y);
+  if (length > limit) {
+    state.x *= limit / length;
+    state.y *= limit / length;
+  }
+  return state;
+}
+
+// Point on the water seen at screen position `ndc` with the view `state`
+function waterPointAt(ndc, state) {
+  applyView(state);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.ray.intersectPlane(waterPlane, new THREE.Vector3());
+  applyView(view);
+  return hit;
+}
+
+// Zoom by `factor` keeping the water under `ndc` in place (screen centre by
+// default); `animate` eases there instead of jumping.
+function zoomView(factor, ndc = new THREE.Vector2(0, 0), animate = false) {
+  const from = animate ? viewGoal : view;
+  const next = clampView({ ...from, zoom: from.zoom * factor });
+  const before = waterPointAt(ndc, from);
+  const after = waterPointAt(ndc, next);
+  if (before && after) {
+    next.x += before.x - after.x;
+    next.y += before.y - after.y;
+  }
+  setView(clampView(next), animate);
+}
+
+// Slide so the water point `grabbed` comes under `ndc`
+function dragView(grabbed, ndc) {
+  const current = waterPointAt(ndc, view);
+  if (!current) return;
+  setView(clampView({ ...view, x: view.x + grabbed.x - current.x, y: view.y + grabbed.y - current.y }), false);
+}
+
+function panView(dx, dy) {
+  // a fraction of what is on screen, so it feels the same at any zoom
+  const step = 0.25 / viewGoal.zoom;
+  setView(clampView({ ...viewGoal, x: viewGoal.x + dx * step, y: viewGoal.y + dy * step }), true);
+}
+
+function resetView() {
+  setView({ ...defaultView }, true);
+}
+
+function setView(state, animate) {
+  Object.assign(viewGoal, state);
+  if (!animate) {
+    Object.assign(view, state);
+    applyView(view);
+  }
+  updateViewButtons();
+}
+
+function easeView(delta) {
+  const k = 1 - Math.exp(-delta * 10);
+  let moving = false;
+  for (const key of ['zoom', 'x', 'y']) {
+    const gap = viewGoal[key] - view[key];
+    if (Math.abs(gap) > 1e-5) {
+      view[key] += gap * k;
+      moving = true;
+    } else {
+      view[key] = viewGoal[key];
+    }
+  }
+  if (moving) applyView(view);
 }
 
 // The part of the sea the whales may swim in: the screen minus the top bar
@@ -1107,8 +1204,52 @@ function singWhale(index) {
   playWhale(index);
 }
 
+// A tap or click plays at once (it is an instrument). Moving the view:
+// two fingers (pinch to zoom, slide to pan), the mouse wheel, or dragging
+// with the right / middle button or Shift + left button.
+const activePointers = new Map();
+let gesture = null;
+
+function ndcFromEvent(event) {
+  const rect = canvas.getBoundingClientRect();
+  return new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1,
+    -(event.clientY - rect.top) / rect.height * 2 + 1);
+}
+
+function touchGesture() {
+  const [a, b] = [...activePointers.values()];
+  const mid = new THREE.Vector2((a.x + b.x) / 2, (a.y + b.y) / 2);
+  const rect = canvas.getBoundingClientRect();
+  const spread = Math.hypot((a.x - b.x) * rect.width, (a.y - b.y) * rect.height);
+  return { mid, spread };
+}
+
+function startGesture() {
+  if (activePointers.size >= 2) {
+    const { mid, spread } = touchGesture();
+    gesture = { type: 'pinch', grabbed: waterPointAt(mid, view), spread, zoom: view.zoom };
+  } else {
+    const [p] = activePointers.values();
+    gesture = { type: 'drag', grabbed: waterPointAt(p, view) };
+  }
+  if (!gesture.grabbed) gesture = null;
+}
+
 function onPointerMove(event) {
   if (!ready) return;
+  if (activePointers.has(event.pointerId)) activePointers.set(event.pointerId, ndcFromEvent(event));
+  if (gesture) {
+    if (gesture.type === 'pinch' && activePointers.size >= 2) {
+      const { mid, spread } = touchGesture();
+      setView(clampView({ ...view, zoom: gesture.zoom * spread / Math.max(gesture.spread, 1) }), false);
+      dragView(gesture.grabbed, mid);
+    } else if (gesture.type === 'drag') {
+      dragView(gesture.grabbed, activePointers.get(event.pointerId) || ndcFromEvent(event));
+    }
+    return;
+  }
+  // Hover ripples (mouse and pen; a resting finger doesn't draw)
+  if (event.pointerType === 'touch') return;
   setPointerFromEvent(event);
   const point = waterPointUnderPointer();
   if (point) {
@@ -1118,9 +1259,24 @@ function onPointerMove(event) {
 
 function onPointerDown(event) {
   if (!ready) return;
-  // Only the primary mouse button plays, touch and pen always do
-  if (event.pointerType === 'mouse' && event.button !== 0) return;
   event.preventDefault();
+  const mouse = event.pointerType === 'mouse';
+  const moveButton = mouse && (event.button === 1 || event.button === 2 || (event.button === 0 && event.shiftKey));
+  if (mouse && event.button !== 0 && !moveButton) return;
+
+  activePointers.set(event.pointerId, ndcFromEvent(event));
+  try {
+    canvas.setPointerCapture(event.pointerId);
+  } catch (error) {
+    // synthetic events have no capturable pointer
+  }
+  if (moveButton || activePointers.size >= 2) {
+    // A second finger turns the touch into a pinch: it doesn't play
+    startGesture();
+    return;
+  }
+  if (gesture) return;
+
   setPointerFromEvent(event);
   const point = waterPointUnderPointer();
   if (!point) return;
@@ -1128,6 +1284,26 @@ function onPointerDown(event) {
   waterSimulation.addDrop(renderer, point.x, point.y, 0.03, 0.02);
   const index = closestWhale(point);
   if (index >= 0) playWhale(index);
+}
+
+function onPointerUp(event) {
+  if (!activePointers.delete(event.pointerId)) return;
+  if (!gesture) return;
+  if (gesture.type === 'pinch' && activePointers.size === 1) {
+    // Lifting one of two fingers: keep sliding with the other
+    startGesture();
+  } else if (gesture.type === 'pinch' || activePointers.size === 0) {
+    gesture = null;
+  }
+}
+
+function onWheel(event) {
+  if (!ready) return;
+  event.preventDefault();
+  // Lines (mouse wheels) or pixels (trackpads; pinches come with ctrlKey)
+  const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+  const factor = Math.exp(-pixels * (event.ctrlKey ? 0.01 : 0.0015));
+  zoomView(factor, ndcFromEvent(event));
 }
 
 // Physical key position (event.code) so it also works on AZERTY keyboards,
@@ -1140,11 +1316,40 @@ function whaleIndexFromKey(event) {
   return -1;
 }
 
+const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+
 function onKeyDown(event) {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
 
   if (event.key === 'f' || event.key === 'F') {
     toggleFullscreen();
+    return;
+  }
+  // View keys. The digit row is left to the pads: on AZERTY keyboards
+  // "-" and "_" sit on the 6 and 8 keys.
+  const digitRow = /^Digit/.test(event.code || '');
+  if (started && !digitRow && (event.key === '+' || event.key === '=')) {
+    zoomView(1.4, undefined, true);
+    return;
+  }
+  if (started && !digitRow && (event.key === '-' || event.key === '_')) {
+    zoomView(1 / 1.4, undefined, true);
+    return;
+  }
+  if (started && (event.code === 'Digit0' || event.code === 'Numpad0' || event.key === '0')) {
+    resetView();
+    return;
+  }
+  if (started && PAN_KEYS[event.key]) {
+    event.preventDefault();
+    // Arrows move over the sea as seen on screen
+    const [sx, sy] = PAN_KEYS[event.key];
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    const dx = sx * right.x + sy * up.x;
+    const dy = sx * right.y + sy * up.y;
+    const length = Math.hypot(dx, dy) || 1;
+    panView(dx / length, dy / length);
     return;
   }
 
@@ -1178,6 +1383,26 @@ function toggleFullscreen() {
     root.webkitRequestFullscreen();
   }
 }
+
+// ---------------------------------------------------------------------------
+// View buttons
+// ---------------------------------------------------------------------------
+
+const zoomInButton = document.getElementById('zoom-in');
+const zoomOutButton = document.getElementById('zoom-out');
+const resetViewButton = document.getElementById('reset-view');
+
+zoomInButton.addEventListener('click', () => zoomView(1.5, undefined, true));
+zoomOutButton.addEventListener('click', () => zoomView(1 / 1.5, undefined, true));
+resetViewButton.addEventListener('click', resetView);
+
+function updateViewButtons() {
+  const moved = viewGoal.zoom > 1.001 || Math.hypot(viewGoal.x, viewGoal.y) > 1e-3;
+  zoomInButton.disabled = viewGoal.zoom >= MAX_ZOOM - 1e-3;
+  zoomOutButton.disabled = viewGoal.zoom <= 1.001;
+  resetViewButton.disabled = !moved;
+}
+updateViewButtons();
 
 if (!(root.requestFullscreen || root.webkitRequestFullscreen)) {
   // e.g. iPhone Safari
@@ -1240,6 +1465,8 @@ function animate() {
   // Capped so a backgrounded tab doesn't teleport the whales on return.
   const delta = Math.min(0.1, Math.max(0, now - lastAnimateTime));
   lastAnimateTime = now;
+
+  easeView(delta);
 
   for (let i = 0; i < whalesCount; i++) {
     const level = Math.max(0, 1 - (now - glowStart[i]) / glowDuration);
@@ -1367,6 +1594,11 @@ Promise.all(loaded).then(() => {
 
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  // right-button drag moves the view
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
   window.addEventListener('keydown', onKeyDown);
 
   ready = true;
