@@ -110,30 +110,68 @@
     .icon-button[aria-pressed="false"] .exit,
     .icon-button:not([aria-pressed]) .exit { display: none; }
 
-    /* Whale number pads */
+    /* Whale pads along the bottom: the drum kit (1, 7, 8) on the left, the
+       voices (2-6) on the right. */
     #labels {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
       opacity: 0;
+      pointer-events: none;
       transition: opacity .6s ease .3s;
     }
 
     .started #labels { opacity: 1; }
 
+    .pads {
+      display: grid;
+      gap: 10px;
+    }
+
+    .pads-drums { grid-template-columns: repeat(2, 44px); }
+    .pads-voices { grid-template-columns: repeat(3, 44px); }
+
+    /* Wide screens: each group on a single row */
+    @media (min-width: 560px) {
+      .pads-drums { grid-template-columns: repeat(3, 44px); }
+      .pads-voices { grid-template-columns: repeat(5, 44px); }
+      .hint { bottom: calc(max(14px, env(safe-area-inset-bottom)) + 44px + 12px) !important; }
+    }
+
     .whale-label {
-      position: fixed;
-      transform: translate(-50%, -50%);
-      width: 30px;
-      height: 30px;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      width: 44px;
+      height: 44px;
       padding: 0;
       border-radius: 50%;
-      border: 1.5px solid var(--whale-color);
+      border: 2px solid var(--whale-color);
       background: rgba(6, 36, 63, .6);
       color: var(--ink);
-      font: 600 14px/1 system-ui, sans-serif;
+      font: 600 16px/1 system-ui, sans-serif;
       cursor: pointer;
       touch-action: none;
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       transition: background .2s;
+    }
+
+    .started .whale-label { pointer-events: auto; }
+
+    .whale-label svg {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .whale-label:hover { background: rgba(6, 36, 63, .9); }
@@ -148,9 +186,10 @@
     }
 
     /* Hint */
+    /* Hint: centered just above the pads (two rows of 44px + 10px gap) */
     .hint {
       position: fixed;
-      bottom: max(14px, env(safe-area-inset-bottom));
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 98px + 12px);
       left: 50%;
       transform: translateX(-50%);
       margin: 0;
@@ -279,7 +318,10 @@
 <body>
   <canvas id="canvas" tabindex="-1" aria-label="Whales under a rippling sea"></canvas>
 
-  <div id="labels"></div>
+  <div id="labels">
+    <div class="pads pads-drums" role="group" aria-label="Drums"></div>
+    <div class="pads pads-voices" role="group" aria-label="Voices"></div>
+  </div>
 
   <header class="bar">
     <h1>Baleines <span>whale songs under the sea</span></h1>
@@ -290,8 +332,8 @@
   </header>
 
   <p class="hint">
-    <span class="mouse-only">Click a whale or press <kbd>1</kbd>–<kbd>8</kbd> · move to ripple the water</span>
-    <span class="touch-only">Tap the whales to make them sing</span>
+    <span class="mouse-only">Click a pad or a whale, or press <kbd>1</kbd>–<kbd>8</kbd></span>
+    <span class="touch-only">Tap a pad or a whale to make it sing</span>
   </p>
 
   <section id="intro">

@@ -252,7 +252,34 @@ function resize() {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   temporaryRenderTarget.setSize(size.x, size.y);
 
-  layoutLabels();
+  updateSwimArea(w, h);
+}
+
+// The part of the sea the whales may swim in: the screen minus the top bar
+// and the pads (and hint above them) at the bottom, projected onto the water.
+let swimArea = null;
+const waterPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -waterHeight);
+
+function updateSwimArea(w, h) {
+  const top = 72;
+  let padsTop = h - 140;
+  for (const element of [document.getElementById('labels'), document.querySelector('.hint')]) {
+    const rect = element && element.getBoundingClientRect();
+    if (rect && rect.height) padsTop = Math.min(padsTop, rect.top);
+  }
+  const bottom = Math.min(h - 72, padsTop - 12);
+  const side = 16;
+  const corners = [[side, top], [w - side, top], [w - side, bottom], [side, bottom]];
+  const area = [];
+  const hit = new THREE.Vector3();
+  const ndc = new THREE.Vector2();
+  for (const [px, py] of corners) {
+    ndc.set(px / w * 2 - 1, -py / h * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    if (!raycaster.ray.intersectPlane(waterPlane, hit)) return; // keep the previous area
+    area.push({ x: hit.x, y: hit.y });
+  }
+  swimArea = area;
 }
 
 // Clock
@@ -280,7 +307,6 @@ const posRangeX = 1.8;
 const posRangeY = 3.0;
 
 const whalesCount = 8;
-const whalesPosition = [];
 
 // Each whale has its own color, used when it sings
 const whaleColors = [
@@ -379,7 +405,7 @@ async function loadWhaleTemplates() {
 const whales = [];       // top-level object per whale (position/orientation)
 const whaleMeshes = [];  // its SkinnedMesh descendant (material assignment)
 const whaleMixers = [];  // AnimationMixer playing the 'idle' swim clip
-const whaleStates = [];  // WhaleState per whale (circle/jump, plan C1-C7)
+const whaleStates = [];  // WhaleState per whale (free swim / jump)
 const whaleFins = [];    // { L, R } pectoral fin bones, steered on top of the clip
 const whaleMaxPitchDeg = new Array(whalesCount).fill(46);
 // How far the pectoral fins angle to steer into a turn (radians).
@@ -392,21 +418,6 @@ const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
     gltf.scene.rotateX(Math.PI / 2);
     gltf.scene.updateMatrixWorld(true);
     templates.humpback = { scene: gltf.scene, animations: gltf.animations };
-  }
-
-  // Slot centers and their nearest-neighbor distance, used below to size
-  // each whale's idle loop without ever letting two bodies touch.
-  const origins = [];
-  for (let i = 0; i < whalesCount; i++) origins.push(whaleTranslateFromIndex(i));
-  function nearestNeighborDist(i) {
-    let min = Infinity;
-    for (let j = 0; j < whalesCount; j++) {
-      if (j === i) continue;
-      const dx = origins[i].posX - origins[j].posX;
-      const dy = origins[i].posY - origins[j].posY;
-      min = Math.min(min, Math.hypot(dx, dy));
-    }
-    return min;
   }
 
   for (let i = 0; i < whalesCount; i++) {
@@ -424,13 +435,12 @@ const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
     const mount = new THREE.Object3D();
     mount.add(whaleModel);
 
-    const { posX, posY } = origins[i];
+    // Start from the original arc, then swim freely.
+    const { posX, posY } = whaleTranslateFromIndex(i);
     mount.position.set(posX, posY, 0);
     mount.updateMatrixWorld(true);
 
     const box = new THREE.Box3().setFromObject(whaleModel);
-    const center = box.getCenter(new THREE.Vector3());
-    whalesPosition.push(center);
     whales.push(mount);
     whaleMeshes.push(whaleModel.getObjectByProperty('type', 'SkinnedMesh'));
     whaleFins.push({
@@ -451,16 +461,13 @@ const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
     const isBlue = effectiveSpecies === 'blue';
     if (isBlue) whaleMaxPitchDeg[i] = 37;
 
-    // Size the idle circle from the whale's own body length and the gap to
-    // its closest neighbor, so it swims a visible loop without the two
-    // bodies ever reaching each other at their closest approach.
     const size = box.getSize(new THREE.Vector3());
-    const bodyLength = Math.max(size.x, size.y);
-    const gap = nearestNeighborDist(i);
-    const safeRadius = Math.max(0, (gap - bodyLength) / 2);
-    const idleRadius = THREE.MathUtils.clamp(safeRadius, 0.02, bodyLength * 0.9);
-
-    whaleStates.push(WhaleState.createState(i, { x: posX, y: posY }, isBlue ? -0.01 : 0, idleRadius));
+    whaleStates.push(WhaleState.createState(i, { x: posX, y: posY }, isBlue ? -0.01 : 0, {
+      bodyLength: Math.max(size.x, size.y),
+      // Varied start headings and cruising speeds so the pod doesn't move in step.
+      heading: i * 2.4,
+      speed: 0.06 + 0.01 * (i % 4),
+    }));
   }
   progress.whale = 1;
   updateProgress();
@@ -969,7 +976,8 @@ function playWhale(index) {
   let output = gain;
   if (audioContext.createStereoPanner) {
     const panner = audioContext.createStereoPanner();
-    const pan = whalesPosition[index] ? THREE.MathUtils.clamp(whalesPosition[index].x, -1, 1) * 0.7 : 0;
+    const state = whaleStates[index];
+    const pan = state ? THREE.MathUtils.clamp(state.x, -1, 1) * 0.7 : 0;
     panner.pan.value = pan;
     gain.connect(panner);
     output = panner;
@@ -985,46 +993,48 @@ function playWhale(index) {
 }
 
 // ---------------------------------------------------------------------------
-// Whale number labels, following the whales on screen
+// Whale number pads, grouped at the bottom of the screen (laid out in CSS)
 // ---------------------------------------------------------------------------
 
 const labelsContainer = document.getElementById('labels');
 const labels = [];
 
+// One pictogram per sound (24x24 line icons, drawn in the pad's text colour).
+// 1, 7 and 8 are the percussive sounds: grouped as the "drum kit".
+const padSounds = [
+  { name: 'Stomp', drum: true, icon: '<ellipse cx="12" cy="10" rx="7" ry="2.5"/><path d="M5 10v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6M8 3.5l3 5M16 3.5l-3 5"/>' },
+  { name: 'Deep bass', icon: '<path d="M2 13c3-6 6-6 9 0s6 6 9 0M4 20h16"/>' },
+  { name: 'Trumpet', icon: '<path d="M3 10v4h4l9 5V5l-9 5H3zM19.5 8.5a5 5 0 0 1 0 7"/>' },
+  { name: 'Ambience', icon: '<path d="M3 7c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>' },
+  // Grunt: a short, rough burst in an otherwise flat line.
+  { name: 'Grunt', icon: '<path d="M2 12h4l1.3-4.5 1.7 9 1.6-7 1.6 5.5 1.5-4 1.3 2.5.9-1.5H22"/>' },
+  { name: 'Deep phrase', icon: '<path d="M4 5h16v10H9l-5 4zM8 10c1.3-2 2.7-2 4 0s2.7 2 4 0"/>' },
+  // Cymbal: one tilted disc with its bell, on a tripod stand.
+  { name: 'Cymbal', drum: true, icon: '<path d="M3.5 9.5L20.5 5.5M4 9.6c3 1.2 11 -.7 16.2 -4M11 7.3c.2-1 1-1.6 2-1.6M12.5 8v12.5M9 21l3.5-3 3.5 3"/>' },
+  // Hi-hat: two stacked discs on a straight stand.
+  { name: 'Hi-hat', drum: true, icon: '<ellipse cx="12" cy="6.5" rx="8" ry="1.6"/><ellipse cx="12" cy="10" rx="8" ry="1.6"/><path d="M12 11.6V21M8.5 21h7"/>' },
+];
+
 function createLabels() {
+  const groups = {
+    drums: labelsContainer.querySelector('.pads-drums'),
+    voices: labelsContainer.querySelector('.pads-voices'),
+  };
   for (let i = 0; i < whalesCount; i++) {
+    const sound = padSounds[i];
     const label = document.createElement('button');
     label.className = 'whale-label';
-    label.textContent = i + 1;
+    label.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${sound.icon}</svg>`;
     label.style.setProperty('--whale-color', `#${whaleColors[i].getHexString()}`);
-    label.setAttribute('aria-label', `Whale ${i + 1}`);
+    label.setAttribute('aria-label', `${sound.name} (whale ${i + 1})`);
+    label.title = `${sound.name} · ${i + 1}`;
     label.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       event.stopPropagation();
       singWhale(i);
     });
-    labelsContainer.appendChild(label);
+    (sound.drum ? groups.drums : groups.voices).appendChild(label);
     labels.push(label);
-  }
-}
-
-function layoutLabels() {
-  if (!labels.length) return;
-  const rect = canvas.getBoundingClientRect();
-  const offset = new THREE.Vector3();
-  // Place each label just past the whale's tail (below it in landscape,
-  // on its right in portrait)
-  const tail = new THREE.Vector3(0, -0.26, 0);
-
-  for (let i = 0; i < whalesCount; i++) {
-    offset.copy(whalesPosition[i]).add(tail);
-    offset.z = waterHeight;
-    offset.project(camera);
-    // Keep the labels on screen, clear of the header and the hint
-    const x = THREE.MathUtils.clamp((offset.x + 1) / 2 * rect.width, 24, rect.width - 24);
-    const y = THREE.MathUtils.clamp((1 - offset.y) / 2 * rect.height, 72, rect.height - 72);
-    labels[i].style.left = `${rect.left + x}px`;
-    labels[i].style.top = `${rect.top + y}px`;
   }
 }
 
@@ -1059,9 +1069,9 @@ function waterPointUnderPointer() {
 function closestWhale(point) {
   let closest = -1;
   let min = Infinity;
-  for (let i = 0; i < whalesCount; i++) {
-    const dx = whalesPosition[i].x - point.x;
-    const dy = whalesPosition[i].y - point.y;
+  for (let i = 0; i < whaleStates.length; i++) {
+    const dx = whaleStates[i].x - point.x;
+    const dy = whaleStates[i].y - point.y;
     const dist = dx * dx + dy * dy;
     if (dist < min) {
       min = dist;
@@ -1071,10 +1081,19 @@ function closestWhale(point) {
   return closest;
 }
 
+// Pad (or its keyboard key): the ripple rises from the water under the pad,
+// the whale itself sings, glows and jumps wherever it is.
 function singWhale(index) {
   if (!ready) return;
-  const { x, y } = whalesPosition[index];
-  waterSimulation.addDrop(renderer, x, y, 0.03, 0.02);
+  const label = labels[index];
+  if (label) {
+    const rect = canvas.getBoundingClientRect();
+    const pad = label.getBoundingClientRect();
+    pointer.x = (pad.left + pad.width / 2 - rect.left) / rect.width * 2 - 1;
+    pointer.y = -(pad.top + pad.height / 2 - rect.top) / rect.height * 2 + 1;
+    const point = waterPointUnderPointer();
+    if (point) waterSimulation.addDrop(renderer, point.x, point.y, 0.03, 0.02);
+  }
   playWhale(index);
 }
 
@@ -1223,7 +1242,8 @@ let lastAnimateTime = performance.now() / 1000;
 function animate() {
   // Fade the whales glow
   const now = performance.now() / 1000;
-  const delta = Math.max(0, now - lastAnimateTime);
+  // Capped so a backgrounded tab doesn't teleport the whales on return.
+  const delta = Math.min(0.1, Math.max(0, now - lastAnimateTime));
   lastAnimateTime = now;
 
   for (let i = 0; i < whalesCount; i++) {
@@ -1232,7 +1252,8 @@ function animate() {
     environment.setGlow(i, level * level * (3 - 2 * level));
   }
 
-  // C1-C7: idle circle / autonomous jump per whale, plus the swim clip.
+  // Free swimming (avoiding each other and the screen edges), jumps, swim clip.
+  WhaleState.step(whaleStates, now, delta, swimArea);
   for (let i = 0; i < whales.length; i++) {
     const state = whaleStates[i];
     const splash = WhaleState.checkSplash(state, now);
