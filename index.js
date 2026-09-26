@@ -317,9 +317,8 @@ function updateProgress() {
   if (bar) bar.style.width = `${value}%`;
 }
 
-// Species assigned per whale index (0-based). classic.glb is not produced
-// yet (separate Blender session, see the plan); it falls back to humpback
-// until it lands.
+// Species assigned per whale index (0-based). classic.glb is the app's
+// original whale.obj rigged by tools/blender/run_classic.py.
 const whaleModelUrls = {
   humpback: 'assets/humpback.glb',
   classic: 'assets/classic.glb',

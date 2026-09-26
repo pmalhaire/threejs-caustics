@@ -58,7 +58,7 @@ SPECIES = {
 
 # Idle undulation: amplitude (radians) per spine bone, head to tail, and the
 # phase lag between consecutive bones (wave travelling towards the tail).
-IDLE_AMPLITUDES = {'spine1': 0.02, 'spine2': 0.04, 'spine3': 0.07, 'spine4': 0.10, 'fluke': 0.16}
+IDLE_AMPLITUDES = {'spine1': 0.013, 'spine2': 0.026, 'spine3': 0.043, 'spine4': 0.064, 'fluke': 0.102}
 IDLE_PHASE_LAG = 0.6
 FIN_FLAP = 0.06
 
