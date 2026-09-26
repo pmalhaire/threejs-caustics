@@ -1,64 +1,70 @@
-uniform sampler2D caustics;
-
 // Base color of the lit object (whale or sea floor)
 uniform vec3 baseColor;
-// How much light the caustics add on this object
-uniform float causticsStrength;
 
 // Colored glow applied to a whale while its sound is playing (0 = off, 1 = full)
 uniform float glow;
 uniform vec3 glowColor;
 
+// Look (see `look` in index.js)
+uniform float ambient;       // light everywhere
+uniform float diffuse;       // extra light on surfaces facing up
+uniform vec3 rimColor;       // light grazing the silhouette
+uniform float rimStrength;
+uniform vec3 deepColor;      // things deeper under the surface tint towards it
+uniform float depthTint;
+uniform float floorNoise;    // sand-like variation (sea floor only)
+uniform vec3 fogColor;       // distance fog, towards the horizon
+uniform float fogNear;
+uniform float fogFar;
+
 varying float lightIntensity;
-varying vec3 lightPosition;
 varying vec3 worldPosition;
+varying vec3 worldNormal;
+varying vec3 vertexColor;
 
-// The sea floor fades into the deep sea color far from the whales, which also
-// hides the edges of the simulated water surface.
-uniform vec3 fadeColor;
+const float waterHeight = 0.1;
 
-const float bias = 0.001;
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
 
-const vec2 resolution = vec2(1024.);
-
-// 5-tap separable gaussian blur (weights/offsets of a 9-tap kernel using
-// linear sampling, see https://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/)
-float blur(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
-  float intensity = 0.;
-  vec2 off1 = vec2(1.3846153846) * direction;
-  vec2 off2 = vec2(3.2307692308) * direction;
-  intensity += texture2D(image, uv).x * 0.2270270270;
-  intensity += texture2D(image, uv + (off1 / resolution)).x * 0.3162162162;
-  intensity += texture2D(image, uv - (off1 / resolution)).x * 0.3162162162;
-  intensity += texture2D(image, uv + (off2 / resolution)).x * 0.0702702703;
-  intensity += texture2D(image, uv - (off2 / resolution)).x * 0.0702702703;
-  return intensity;
+float valueNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3. - 2. * f);
+  return mix(mix(hash(i), hash(i + vec2(1., 0.)), f.x),
+             mix(hash(i + vec2(0., 1.)), hash(i + vec2(1., 1.)), f.x), f.y);
 }
 
 void main() {
   // Ambient light + diffuse light
-  float computedLightIntensity = 0.5 + 0.2 * lightIntensity;
+  float computedLightIntensity = ambient + diffuse * lightIntensity;
 
-  // Retrieve caustics depth information
-  float causticsDepth = texture2D(caustics, lightPosition.xy).w;
-
-  if (causticsDepth > lightPosition.z - bias) {
-    // Percentage Close Filtering
-    float causticsIntensity = 0.5 * (
-      blur(caustics, lightPosition.xy, resolution, vec2(0., 0.5)) +
-      blur(caustics, lightPosition.xy, resolution, vec2(0.5, 0.))
-    );
-
-    computedLightIntensity += causticsStrength * causticsIntensity * smoothstep(0., 1., lightIntensity);
+  vec3 albedo = baseColor * vertexColor;
+  if (floorNoise > 0.) {
+    // Two octaves, rotated against each other so the value-noise grid
+    // doesn't show as blocks
+    vec2 p = worldPosition.xy;
+    float n = valueNoise(p * 3.1) * 0.6 + valueNoise(mat2(0.8, -0.6, 0.6, 0.8) * p * 9.7) * 0.4;
+    albedo *= 1. + floorNoise * (n - 0.5) * 2.;
   }
 
-  vec3 color = baseColor * computedLightIntensity;
+  vec3 color = albedo * computedLightIntensity;
 
-  // Singing whale: tint towards its own color, keeping the caustics shimmer
+  if (rimStrength > 0.) {
+    vec3 toEye = normalize(cameraPosition - worldPosition);
+    float rim = pow(1. - max(dot(normalize(worldNormal), toEye), 0.), 3.);
+    color += rimColor * rim * rimStrength;
+  }
+
+  // Singing whale: tint towards its own color
   color = mix(color, glowColor * computedLightIntensity * 1.4, clamp(glow, 0., 1.) * 0.85);
 
-  float fade = smoothstep(1.35, 2.0, length(worldPosition.xy));
-  color = mix(color, fadeColor, fade);
+  float depth = clamp((waterHeight - worldPosition.z) * depthTint, 0., 1.);
+  color = mix(color, deepColor, depth);
+
+  float fog = smoothstep(fogNear, fogFar, distance(cameraPosition, worldPosition));
+  color = mix(color, fogColor, fog);
 
   gl_FragColor = vec4(color, 1.);
 }

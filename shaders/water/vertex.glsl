@@ -2,12 +2,20 @@ uniform sampler2D water;
 // 1, or 0 to keep the surface flat when the simulation cannot be read
 uniform float waterStrength;
 
+// How far (world units) refracted rays travel before being looked up in the
+// rendered scene: 1 in the original look; smaller keeps lookups on screen
+// with a tilted camera (off-screen lookups smeared the edge pixels into
+// rainbow streaks).
+uniform float refractionFactor;
+// Chromatic dispersion: 1 in the original look (rainbow fringes), less keeps
+// the whales' outlines clean with a tilted camera.
+uniform float dispersion;
+
 varying vec2 refractedPosition[3];
 varying vec3 reflected;
 varying float reflectionFactor;
 varying vec2 surfacePosition;
-
-const float refractionFactor = 1.;
+varying vec3 surfaceWorldPosition;
 
 const float fresnelBias = 0.1;
 const float fresnelPower = 2.;
@@ -37,15 +45,17 @@ void main() {
 
   reflectionFactor = fresnelBias + fresnelScale * pow(1. + dot(eye, norm), fresnelPower);
 
+  surfaceWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
+
   mat4 proj = projectionMatrix * modelViewMatrix;
 
   vec4 projectedRefractedPosition = proj * vec4(pos + refractionFactor * refracted, 1.0);
   refractedPosition[0] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
 
-  projectedRefractedPosition = proj * vec4(pos + refractionFactor * normalize(refract(eye, norm, eta * 0.96)), 1.0);
+  projectedRefractedPosition = proj * vec4(pos + refractionFactor * normalize(refract(eye, norm, eta * (1. - 0.04 * dispersion))), 1.0);
   refractedPosition[1] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
 
-  projectedRefractedPosition = proj * vec4(pos + refractionFactor * normalize(refract(eye, norm, eta * 0.92)), 1.0);
+  projectedRefractedPosition = proj * vec4(pos + refractionFactor * normalize(refract(eye, norm, eta * (1. - 0.08 * dispersion))), 1.0);
   refractedPosition[2] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
 
   gl_Position = proj * vec4(pos, 1.0);

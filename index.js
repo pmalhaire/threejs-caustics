@@ -1,5 +1,5 @@
-// Baleines — play whale songs on a caustics-lit sea.
-// Rendering technique from https://github.com/martinRenou/threejs-caustics
+// Baleines — play whale songs in the deep sea.
+// Water simulation and refraction from https://github.com/martinRenou/threejs-caustics
 
 'use strict';
 
@@ -10,9 +10,39 @@
 const canvas = document.getElementById('canvas');
 const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
 
+// ?capture: keeps the last frame readable (canvas.toDataURL) and lightens the
+// water mesh, for automated screenshots.
+const captureMode = new URLSearchParams(location.search).has('capture');
+
 // Colors
 const black = new THREE.Color('black');
-const seaColor = new THREE.Color('#06243f');
+
+// ---------------------------------------------------------------------------
+// Look: open ocean at dusk — dark water, whales lit from above with a cold
+// rim, drifting marine snow, light shafts from the surface (CSS, index.html).
+// ---------------------------------------------------------------------------
+
+const hexColor = (hex) => new THREE.Color(hex);
+
+const look = {
+  // Camera tilt from the vertical (landscape, portrait), distance to the
+  // target, and zoom on the reference framing (landscape, portrait).
+  camera: { tilt: [46, 40], distance: 2.4, zoom: [0.9, 0.66] },
+  // Whales keep the species colours painted by the rigging pipeline.
+  whaleColor: new THREE.Color(1.1, 1.1, 1.15),
+  floorColor: hexColor('#08223a'),
+  ambient: 0.45, diffuse: 0.8,
+  rim: 0.9, rimColor: hexColor('#5fb8ff'),
+  depthTint: 1.2, deepColor: hexColor('#021223'),
+  floorNoise: 0.18,
+  // Distance fog towards the horizon (from, to), also the background.
+  fog: [2.2, 4.0], fogColor: hexColor('#021223'),
+  // Where refracted rays find nothing to show.
+  deepWater: hexColor('#04203a'),
+  sky: ['#1b4d73', '#051a2e'],
+  refraction: 0.3, dispersion: 0.25, reflectionMax: 0.25, waterTint: hexColor('#a9cdee'),
+  snowOpacity: 0.55,
+};
 
 function loadFile(filename) {
   return new Promise((resolve, reject) => {
@@ -24,20 +54,16 @@ function loadFile(filename) {
 const waterHeight = 0.1;
 const waterPosition = new THREE.Vector3(0, 0, waterHeight);
 // Number of segments of the water meshes (lighter on phones/tablets)
-const waterSegments = isCoarsePointer ? 512 : 1024;
+const waterSegments = captureMode ? 256 : isCoarsePointer ? 512 : 1024;
 const simulationSize = 1024;
-const envSize = 1024;
-const causticsSize = 1024;
 const waterScale = 4;
 const floorDepth = -0.14;
 
-// Directional light, pointing down. The camera is also used as the light
-// point of view for the environment map and caustics.
+// Directional light, pointing down (from the surface).
 const light = [0., 0., -1.];
 
 // Camera looks at the water from above, tilted.
 // Reference framing: vertical fov of 35° for a 3:2 landscape viewport.
-const cameraDistance = 2.7;
 // Center of the arc of whales
 const cameraTarget = new THREE.Vector3(0, 0.14, waterHeight);
 // A little wider than the original framing so no whale touches the edges
@@ -49,7 +75,7 @@ const camera = new THREE.PerspectiveCamera(35, 1.5, 0.01, 100);
 camera.up.set(0, 0, 1);
 scene.add(camera);
 
-const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, preserveDrawingBuffer: captureMode });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.autoClear = false;
 console.info('Baleines: floatVertexTextures =', renderer.capabilities.floatVertexTextures);
@@ -57,16 +83,15 @@ console.info('Baleines: floatVertexTextures =', renderer.capabilities.floatVerte
 // ---------------------------------------------------------------------------
 // Floating point textures
 //
-// The water simulation, the environment map and the caustics live in floating
-// point textures, and what devices report about them is not reliable: iOS
-// renders to float textures it cannot filter, some Android GPUs cannot read
-// them from a vertex shader, others cannot blend into them. An unusable
+// The water simulation lives in floating point textures, and what devices
+// report about them is not reliable: iOS renders to float textures it cannot
+// filter, some Android GPUs cannot read them from a vertex shader. An unusable
 // texture reads as (0, 0, 0, 1): the water normal then lies flat on its side,
 // the sea shows the sky reflection and the whales are refracted off screen.
 //
 // So every format is tested at startup exactly the way it is used: written by
-// a draw call (with additive blending for the caustics), then read back from a
-// vertex or fragment shader into a regular texture whose pixel we check.
+// a draw call, then read back from a vertex or fragment shader into a regular
+// texture whose pixel we check.
 // ---------------------------------------------------------------------------
 
 const ext = (name) => !!renderer.extensions.get(name);
@@ -98,16 +123,6 @@ const probe = (() => {
     fragmentShader: 'precision highp float; uniform vec4 color;' +
       'void main() { gl_FragColor = color; }',
   });
-
-  const blendMaterial = writeMaterial.clone();
-  blendMaterial.transparent = true;
-  blendMaterial.blending = THREE.CustomBlending;
-  blendMaterial.blendEquation = THREE.AddEquation;
-  blendMaterial.blendSrc = THREE.OneFactor;
-  blendMaterial.blendDst = THREE.OneFactor;
-  blendMaterial.blendEquationAlpha = THREE.AddEquation;
-  blendMaterial.blendSrcAlpha = THREE.OneFactor;
-  blendMaterial.blendDstAlpha = THREE.ZeroFactor;
 
   // Both readers output value * (.5, .5, .5, 1) + (.5, .5, .5, 0)
   const readUniforms = () => ({ source: { value: null }, uv: { value: new THREE.Vector2() } });
@@ -156,20 +171,15 @@ const probe = (() => {
   const expected = [159, 191, 223, 255]; // (.25, .5, .75, 1) through the readers
   const close = (a, b) => a.every((value, i) => Math.abs(value - b[i]) <= 8);
 
-  // Does `format` work when written (optionally blended) and read from `stages`?
-  function formatWorks(format, { stages, blend }) {
+  // Does `format` work when written and read from `stages`?
+  function formatWorks(format, { stages }) {
     const target = createFloatTarget(4, format, { depthBuffer: false });
     let works = false;
     try {
       renderer.setRenderTarget(target);
       renderer.setClearColor(black, 0);
       renderer.clear();
-      if (blend) {
-        draw(target, blendMaterial, [.125, .25, .375, 1]);
-        draw(target, blendMaterial, [.125, .25, .375, 1]);
-      } else {
-        draw(target, writeMaterial, [.25, .5, .75, 1]);
-      }
+      draw(target, writeMaterial, [.25, .5, .75, 1]);
       works = stages.every((stage) => close(read(target.texture, [.375, .375], stage), expected));
     } catch (error) {
       works = false;
@@ -179,38 +189,22 @@ const probe = (() => {
     return works;
   }
 
-  function pick(candidates, needs) {
-    const format = candidates.find((candidate) => formatWorks(candidate, needs));
-    return format || null;
-  }
-
-  return { pick, read, formatWorks };
+  return { read, formatWorks };
 })();
 
-// Water simulation: written by the simulation, read by the vertex shaders of
-// the water surface and the caustics (nearest filtering, like three.js' GPGPU
-// helpers, is what vertex shaders support best).
+// Water simulation: written by the simulation, read by the vertex shader of
+// the water surface (nearest filtering, like three.js' GPGPU helpers, is what
+// vertex shaders support best).
 const simulationFormats = [FLOAT_NEAREST, HALF_NEAREST, FLOAT_LINEAR, HALF_LINEAR]
   .filter((format) => probe.formatWorks(format, { stages: ['vertex', 'fragment'] }));
-// Environment map (positions and depths), read by the caustics vertex shader.
-// Precision matters: half floats draw streaks of light on the sea floor.
-const envFormat = probe.pick([FLOAT_NEAREST, HALF_NEAREST, FLOAT_LINEAR, HALF_LINEAR],
-  { stages: ['vertex'] });
-// Caustics: accumulated with additive blending, read (and blurred) by the
-// whales and floor fragment shaders.
-const causticsFormat = probe.pick([FLOAT_LINEAR, HALF_LINEAR, FLOAT_NEAREST, HALF_NEAREST],
-  { stages: ['fragment'], blend: true });
-
 const diagnostics = {
-  build: 'v4',
+  build: 'v5',
   gpu: (() => {
     const gl = renderer.getContext();
     const info = gl.getExtension('WEBGL_debug_renderer_info');
     return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
   })(),
   simulation: simulationFormats.length ? simulationFormats[0].name : 'none',
-  environment: envFormat ? envFormat.name : 'none',
-  caustics: causticsFormat ? causticsFormat.name : 'none',
   water: 'pending',
 };
 
@@ -229,18 +223,21 @@ function resize() {
   const aspect = w / h;
   const portrait = aspect < 1;
 
+  // Tilt from the vertical and distance come from the look: the lower the
+  // camera, the more perspective (and horizon) the sea gets.
+  const { tilt: tilts, distance, zoom: zooms } = look.camera;
+  const tilt = THREE.MathUtils.degToRad(portrait ? tilts[1] : tilts[0]);
+  const zoom = portrait ? zooms[1] : zooms[0];
   let halfV;
-  let tilt;
   if (portrait) {
-    tilt = Math.PI / 12;
     halfV = Math.max(refHalfH, refHalfV / aspect);
-    camera.position.set(cameraTarget.x - cameraDistance * Math.sin(tilt), cameraTarget.y, 0);
+    camera.position.set(cameraTarget.x - distance * Math.sin(tilt), cameraTarget.y, 0);
   } else {
-    tilt = Math.PI / 6;
     halfV = Math.max(refHalfV, refHalfH / aspect);
-    camera.position.set(cameraTarget.x, cameraTarget.y - cameraDistance * Math.sin(tilt), 0);
+    camera.position.set(cameraTarget.x, cameraTarget.y - distance * Math.sin(tilt), 0);
   }
-  camera.position.z = waterHeight + cameraDistance * Math.cos(tilt);
+  halfV *= zoom;
+  camera.position.z = waterHeight + distance * Math.cos(tilt);
 
   camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfV));
   camera.aspect = aspect;
@@ -258,6 +255,9 @@ function resize() {
 // The part of the sea the whales may swim in: the screen minus the top bar
 // and the pads (and hint above them) at the bottom, projected onto the water.
 let swimArea = null;
+// Ripples only exist on the simulated water, the [-1, 1] square: keep the
+// whales around it (a little over, their splashes still show near the edge).
+const swimRadius = 1.2;
 const waterPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -waterHeight);
 
 function updateSwimArea(w, h) {
@@ -268,18 +268,71 @@ function updateSwimArea(w, h) {
     if (rect && rect.height) padsTop = Math.min(padsTop, rect.top);
   }
   const bottom = Math.min(h - 72, padsTop - 12);
-  const side = 16;
+  // Wide enough that a whale turning at the edge stays fully on screen.
+  const side = Math.max(24, w * 0.09);
   const corners = [[side, top], [w - side, top], [w - side, bottom], [side, bottom]];
-  const area = [];
+  let area = [];
   const hit = new THREE.Vector3();
   const ndc = new THREE.Vector2();
   for (const [px, py] of corners) {
-    ndc.set(px / w * 2 - 1, -py / h * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
-    if (!raycaster.ray.intersectPlane(waterPlane, hit)) return; // keep the previous area
+    // With a low camera the top of the screen can look above the horizon:
+    // slide down until the ray meets the water.
+    let y = py;
+    let found = false;
+    for (; y <= bottom && !found; y += h * 0.04) {
+      ndc.set(px / w * 2 - 1, -y / h * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      found = !!raycaster.ray.intersectPlane(waterPlane, hit);
+    }
+    if (!found) return; // keep the previous area
     area.push({ x: hit.x, y: hit.y });
   }
-  swimArea = area;
+  // Only the middle of the sea is simulated and lit, it fades out beyond:
+  // keep the whales inside that disc (the far side of a low camera's view
+  // would otherwise stretch towards the horizon).
+  const radius = swimRadius;
+  area = clipPolygon(area, Array.from({ length: 24 }, (_, i) => ({
+    x: radius * Math.cos(i / 24 * Math.PI * 2),
+    y: radius * Math.sin(i / 24 * Math.PI * 2),
+  })));
+  if (area.length >= 3) swimArea = area;
+}
+
+// Sutherland-Hodgman: the part of convex polygon `subject` inside convex
+// polygon `clip` (both as [{x, y}], either winding).
+function clipPolygon(subject, clip) {
+  const winding = Math.sign(signedArea(clip));
+  let output = subject;
+  for (let i = 0; i < clip.length && output.length; i++) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const inside = (p) => winding * ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) >= 0;
+    const input = output;
+    output = [];
+    for (let j = 0; j < input.length; j++) {
+      const p = input[j];
+      const q = input[(j + 1) % input.length];
+      if (inside(p)) output.push(p);
+      if (inside(p) !== inside(q)) {
+        // Intersection of segment pq with the clip edge line ab
+        const d1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        const d2 = (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
+        const t = d1 / (d1 - d2);
+        output.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+      }
+    }
+  }
+  return output;
+}
+
+function signedArea(polygon) {
+  let sum = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const p = polygon[i];
+    const q = polygon[(i + 1) % polygon.length];
+    sum += p.x * q.y - q.x * p.y;
+  }
+  return sum / 2;
 }
 
 // Clock
@@ -314,8 +367,6 @@ const whaleColors = [
   '#38d9a9', '#4dabf7', '#9775fa', '#f783ac',
 ].map((c) => new THREE.Color(c));
 
-const whaleBaseColor = new THREE.Color(0.0, 0.4, 1.0);
-const floorBaseColor = new THREE.Color(0.05, 0.32, 0.5);
 
 function whaleTranslateFromIndex(i) {
   // convert from [0,whalesCount[ to [-1,1]
@@ -473,12 +524,13 @@ const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
   updateProgress();
 });
 
-// Sea floor, receiving the caustics
-const floorGeometry = new THREE.PlaneBufferGeometry(waterScale * 2, waterScale * 2);
+// Sea floor
+// Large enough to reach the (fogged) horizon of the low-camera looks.
+const floorGeometry = new THREE.PlaneBufferGeometry(waterScale * 8, waterScale * 8);
 floorGeometry.translate(0, 0, floorDepth);
 
 // Sky used for the water reflections: a simple vertical gradient cube map
-function createSkyTexture() {
+function createSkyTexture([top, bottom]) {
   const size = 64;
   const faces = [];
   for (let i = 0; i < 6; i++) {
@@ -486,8 +538,8 @@ function createSkyTexture() {
     c.width = c.height = size;
     const ctx = c.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, size);
-    gradient.addColorStop(0, '#dff3ff');
-    gradient.addColorStop(1, '#7cc4e8');
+    gradient.addColorStop(0, top);
+    gradient.addColorStop(1, bottom);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     faces.push(c);
@@ -496,7 +548,7 @@ function createSkyTexture() {
   texture.needsUpdate = true;
   return texture;
 }
-const skyTexture = createSkyTexture();
+const skyTexture = createSkyTexture(look.sky);
 
 // ---------------------------------------------------------------------------
 // Rendering passes
@@ -621,7 +673,15 @@ class Water {
             waterStrength: { value: 1 },
             envMap: { value: null },
             skybox: { value: skyTexture },
-            fadeColor: { value: seaColor },
+            deepWater: { value: look.deepWater },
+            refractionFactor: { value: look.refraction },
+            dispersion: { value: look.dispersion },
+            reflectionMax: { value: look.reflectionMax },
+            waterTint: { value: look.waterTint },
+            fogColor: { value: look.fogColor },
+            fogNear: { value: look.fog[0] },
+            fogFar: { value: look.fog[1] },
+            holeHalfSize: { value: 0 },
           },
           vertexShader: vertexShader,
           fragmentShader: fragmentShader,
@@ -633,174 +693,43 @@ class Water {
         this.mesh = new THREE.Mesh(this.geometry, this.material);
         this.mesh.position.set(waterPosition.x, waterPosition.y, waterPosition.z);
         this.mesh.frustumCulled = false;
+
+        // The rest of the sea, out to the horizon: flat and coarse, with a
+        // hole where the detailed simulated surface above sits.
+        this.outerMaterial = this.material.clone();
+        this.outerMaterial.extensions = this.material.extensions;
+        // clone() copies textures and colours: share them instead
+        for (const name of ['skybox', 'deepWater', 'waterTint', 'fogColor']) {
+          this.outerMaterial.uniforms[name].value = this.material.uniforms[name].value;
+        }
+        this.outerMaterial.uniforms['holeHalfSize'].value = waterScale / 2 - 0.001;
+        const outerGeometry = new THREE.PlaneBufferGeometry(waterScale * 8, waterScale * 8, 128, 128);
+        const outer = new THREE.Mesh(outerGeometry, this.outerMaterial);
+        outer.frustumCulled = false;
+        this.mesh.add(outer);
       });
   }
 
   setHeightTexture(waterTexture) {
     this.material.uniforms['water'].value = waterTexture;
+    this.outerMaterial.uniforms['water'].value = waterTexture;
   }
 
   // 0 keeps the surface flat (when the simulation cannot be read)
   setWaterStrength(strength) {
     this.material.uniforms['waterStrength'].value = strength;
+    this.outerMaterial.uniforms['waterStrength'].value = strength;
   }
 
   setEnvMapTexture(envMap) {
     this.material.uniforms['envMap'].value = envMap;
+    this.outerMaterial.uniforms['envMap'].value = envMap;
   }
 
 }
 
 
-// This renders the environment map seen from the light POV.
-// The resulting texture contains (posx, posy, posz, depth) in the colors channels.
-class EnvironmentMap {
-
-  constructor() {
-    this.size = envSize;
-    this.target = createFloatTarget(this.size, envFormat || FLOAT_NEAREST);
-
-    const shadersPromises = [
-      loadFile('shaders/environment_mapping/vertex.glsl'),
-      loadFile('shaders/environment_mapping/fragment.glsl')
-    ];
-
-    this._whaleMeshes = [];
-    this._floorMesh = null;
-
-    this.loaded = Promise.all(shadersPromises)
-      .then(([vertexShader, fragmentShader]) => {
-        this._floorMaterial = new THREE.ShaderMaterial({
-          vertexShader: vertexShader,
-          fragmentShader: fragmentShader,
-        });
-        this._whaleMaterial = new THREE.ShaderMaterial({
-          vertexShader: vertexShader,
-          fragmentShader: fragmentShader,
-          skinning: true,
-        });
-      });
-  }
-
-  // whaleMeshes: SkinnedMesh instances already positioned/added to the real
-  // scene by Environment; floorGeometry: static, not skinned.
-  setGeometries(whaleMeshes, floorGeometry) {
-    this._whaleMeshes = whaleMeshes;
-    this._floorMesh = new THREE.Mesh(floorGeometry, this._floorMaterial);
-  }
-
-  render(renderer) {
-    const oldTarget = renderer.getRenderTarget();
-
-    renderer.setRenderTarget(this.target);
-    renderer.setClearColor(black, 0);
-    renderer.clear();
-
-    for (let mesh of this._whaleMeshes) {
-      const visibleMaterial = mesh.material;
-      mesh.material = this._whaleMaterial;
-      // The whale is only added once to the real scene; keep its skeleton
-      // in sync here too since this pass renders it in isolation.
-      mesh.skeleton.update();
-      renderer.render(mesh, camera);
-      mesh.material = visibleMaterial;
-    }
-
-    if (this._floorMesh) renderer.render(this._floorMesh, camera);
-
-    renderer.setRenderTarget(oldTarget);
-  }
-
-}
-
-
-class Caustics {
-
-  constructor() {
-    this.target = createFloatTarget(causticsSize, causticsFormat || HALF_LINEAR);
-
-    this._waterGeometry = new THREE.PlaneBufferGeometry(waterScale, waterScale, waterSegments, waterSegments);
-
-    const shadersPromises = [
-      loadFile('shaders/caustics/water_vertex.glsl'),
-      loadFile('shaders/caustics/water_fragment.glsl'),
-    ];
-
-    this.loaded = Promise.all(shadersPromises)
-      .then(([waterVertexShader, waterFragmentShader]) => {
-        this._waterMaterial = new THREE.ShaderMaterial({
-          uniforms: {
-            light: { value: light },
-            env: { value: null },
-            water: { value: null },
-            waterStrength: { value: 1 },
-            deltaEnvTexture: { value: null },
-          },
-          vertexShader: waterVertexShader,
-          fragmentShader: waterFragmentShader,
-          transparent: true,
-        });
-
-        this._waterMaterial.blending = THREE.CustomBlending;
-
-        // Set the blending so that:
-        // Caustics intensity uses an additive function
-        this._waterMaterial.blendEquation = THREE.AddEquation;
-        this._waterMaterial.blendSrc = THREE.OneFactor;
-        this._waterMaterial.blendDst = THREE.OneFactor;
-
-        // Caustics depth does not use blending, we just set the value
-        this._waterMaterial.blendEquationAlpha = THREE.AddEquation;
-        this._waterMaterial.blendSrcAlpha = THREE.OneFactor;
-        this._waterMaterial.blendDstAlpha = THREE.ZeroFactor;
-
-        this._waterMaterial.side = THREE.DoubleSide;
-        this._waterMaterial.extensions = {
-          derivatives: true
-        };
-
-        this._waterMesh = new THREE.Mesh(this._waterGeometry, this._waterMaterial);
-        this._waterMesh.frustumCulled = false;
-      });
-  }
-
-  setDeltaEnvTexture(deltaEnvTexture) {
-    this._waterMaterial.uniforms['deltaEnvTexture'].value = deltaEnvTexture;
-  }
-
-  setTextures(waterTexture, envTexture) {
-    this._waterMaterial.uniforms['env'].value = envTexture;
-    this._waterMaterial.uniforms['water'].value = waterTexture;
-  }
-
-  setWaterStrength(strength) {
-    this._waterMaterial.uniforms['waterStrength'].value = strength;
-  }
-
-  clear() {
-    const oldTarget = renderer.getRenderTarget();
-    renderer.setRenderTarget(this.target);
-    renderer.setClearColor(black, 0);
-    renderer.clear();
-    renderer.setRenderTarget(oldTarget);
-  }
-
-  render(renderer) {
-    const oldTarget = renderer.getRenderTarget();
-
-    renderer.setRenderTarget(this.target);
-    renderer.setClearColor(black, 0);
-    renderer.clear();
-
-    renderer.render(this._waterMesh, camera);
-
-    renderer.setRenderTarget(oldTarget);
-  }
-
-}
-
-
-// Objects under the water (whales + sea floor), lit by the caustics.
+// Objects under the water (whales + sea floor).
 // Every mesh gets its own material so each whale can glow on its own.
 class Environment {
 
@@ -817,14 +746,19 @@ class Environment {
       this._baseMaterial = new THREE.ShaderMaterial({
         uniforms: {
           light: { value: light },
-          caustics: { value: null },
-          lightProjectionMatrix: { value: camera.projectionMatrix },
-          lightViewMatrix: { value: camera.matrixWorldInverse },
-          baseColor: { value: whaleBaseColor },
-          causticsStrength: { value: 1.0 },
+          baseColor: { value: new THREE.Color() },
           glow: { value: 0.0 },
           glowColor: { value: new THREE.Color() },
-          fadeColor: { value: seaColor },
+          ambient: { value: look.ambient },
+          diffuse: { value: look.diffuse },
+          rimColor: { value: look.rimColor },
+          rimStrength: { value: 0 },
+          deepColor: { value: look.deepColor },
+          depthTint: { value: look.depthTint },
+          floorNoise: { value: 0 },
+          fogColor: { value: look.fogColor },
+          fogNear: { value: look.fog[0] },
+          fogFar: { value: look.fog[1] },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -832,15 +766,18 @@ class Environment {
     });
   }
 
-  _createMaterial(baseColor, causticsStrength, skinning) {
+  _createMaterial(baseColor, isWhale) {
     const material = this._baseMaterial.clone();
-    // Share the matrices with the camera (clone() copies them)
-    material.uniforms['lightProjectionMatrix'].value = camera.projectionMatrix;
-    material.uniforms['lightViewMatrix'].value = camera.matrixWorldInverse;
+    // clone() copies the colours: share the look's instead
+    for (const name of ['rimColor', 'deepColor', 'fogColor']) {
+      material.uniforms[name].value = this._baseMaterial.uniforms[name].value;
+    }
     material.uniforms['baseColor'].value = baseColor;
-    material.uniforms['causticsStrength'].value = causticsStrength;
-    material.uniforms['fadeColor'].value = seaColor;
-    material.skinning = !!skinning;
+    material.uniforms['rimStrength'].value = isWhale ? look.rim : 0;
+    material.uniforms['floorNoise'].value = isWhale ? 0 : look.floorNoise;
+    // Whales: skinned, in the species colours painted by the rigging pipeline
+    material.skinning = isWhale;
+    material.vertexColors = isWhale;
     return material;
   }
 
@@ -851,23 +788,17 @@ class Environment {
     this.whaleMaterials = [];
 
     whaleMeshes.forEach((mesh, i) => {
-      const material = this._createMaterial(whaleBaseColor, 1.0, true);
+      const material = this._createMaterial(look.whaleColor, true);
       material.uniforms['glowColor'].value = whaleColors[i];
       this.whaleMaterials.push(material);
       mesh.material = material;
       this._meshes.push(mesh);
     });
 
-    const floorMaterial = this._createMaterial(floorBaseColor, 0.9, false);
+    const floorMaterial = this._createMaterial(look.floorColor, false);
     const floorMesh = new THREE.Mesh(floor, floorMaterial);
     floorMesh.frustumCulled = false;
     this._meshes.push(floorMesh);
-  }
-
-  updateCaustics(causticsTexture) {
-    for (let mesh of this._meshes) {
-      mesh.material.uniforms['caustics'].value = causticsTexture;
-    }
   }
 
   setGlow(index, value) {
@@ -886,11 +817,77 @@ class Environment {
 
 }
 
+// Marine snow: specks drifting and slowly sinking between the floor and the
+// surface (under the water, so they are refracted with the rest).
+class MarineSnow {
+
+  constructor(count) {
+    const positions = new Float32Array(count * 3);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.sqrt(Math.random()) * 1.7;
+      positions[i * 3] = Math.cos(angle) * radius;
+      positions[i * 3 + 1] = Math.sin(angle) * radius;
+      positions[i * 3 + 2] = Math.random();
+      seeds[i] = Math.random();
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('seed', new THREE.BufferAttribute(seeds, 1));
+
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        opacity: { value: look.snowOpacity },
+        pixelRatio: { value: renderer.getPixelRatio() },
+        floorZ: { value: floorDepth },
+        surfaceZ: { value: waterHeight - 0.01 },
+      },
+      vertexShader: `
+        uniform float time;
+        uniform float pixelRatio;
+        uniform float floorZ;
+        uniform float surfaceZ;
+        attribute float seed;
+        varying float alpha;
+        void main() {
+          // position.z is a 0..1 phase: sink slowly, wrapping from floor to surface
+          float h = fract(position.z - time * (0.004 + 0.006 * seed));
+          vec3 p = vec3(position.xy, mix(floorZ, surfaceZ, h));
+          p.x += 0.03 * sin(time * 0.3 + seed * 40.);
+          p.y += 0.03 * cos(time * 0.23 + seed * 25.);
+          vec4 mv = modelViewMatrix * vec4(p, 1.);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = (1. + 1.6 * seed) * pixelRatio * 2. / -mv.z;
+          // fade in/out at the top and bottom of the loop, and far away
+          alpha = smoothstep(0., 0.1, h) * smoothstep(1., 0.9, h) * (1. - smoothstep(1.3, 1.7, length(p.xy)));
+        }`,
+      fragmentShader: `
+        uniform float opacity;
+        varying float alpha;
+        void main() {
+          float d = length(gl_PointCoord - 0.5);
+          gl_FragColor = vec4(vec3(0.85, 0.93, 1.), (1. - smoothstep(0.2, 0.5, d)) * alpha * opacity);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.points = new THREE.Points(geometry, this.material);
+    this.points.frustumCulled = false;
+  }
+
+  update(time) {
+    this.material.uniforms['time'].value = time;
+  }
+
+}
+
 const waterSimulation = new WaterSimulation();
+const marineSnow = new MarineSnow(isCoarsePointer ? 500 : 900);
 const water = new Water();
-const environmentMap = new EnvironmentMap();
 const environment = new Environment();
-const caustics = new Caustics();
 
 // ---------------------------------------------------------------------------
 // Sound — Web Audio for low latency playback, stereo placed by whale position
@@ -1185,7 +1182,6 @@ document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 // ---------------------------------------------------------------------------
 
 let waterEnabled = true;
-let causticsEnabled = !!(envFormat && causticsFormat);
 
 // Drop some water where the probe looks, and read it back from a vertex
 // shader, exactly like the water surface does. Try every usable format and,
@@ -1206,27 +1202,13 @@ function checkWater() {
     }
   }
   waterEnabled = false;
-  causticsEnabled = false;
   water.setWaterStrength(0);
-  caustics.setWaterStrength(0);
   diagnostics.simulation = 'none';
   diagnostics.water = 'flat';
 }
 
-// The environment map center shows the sea floor, below the water (z < 0)
-function checkEnvironmentMap() {
-  if (!causticsEnabled) return;
-  environmentMap.render(renderer);
-  const [, , z, depth] = probe.read(environmentMap.target.texture, [.5, .5], 'vertex');
-  if (!(z < 122 && depth > 200)) {
-    causticsEnabled = false;
-    diagnostics.environment += ' (unreadable)';
-  }
-}
-
 function showDiagnostics() {
   const text = [diagnostics.build, diagnostics.gpu, `water ${diagnostics.simulation}`,
-    `env ${diagnostics.environment}`, `caustics ${causticsEnabled ? diagnostics.caustics : 'off'}`,
     diagnostics.water].join(' \u00b7 ');
   console.info('Baleines:', text);
   const element = document.getElementById('diag');
@@ -1290,22 +1272,14 @@ function animate() {
 
     water.setHeightTexture(waterTexture);
 
-    if (causticsEnabled) {
-      environmentMap.render(renderer);
-      const environmentMapTexture = environmentMap.target.texture;
-
-      caustics.setTextures(waterTexture, environmentMapTexture);
-      caustics.render(renderer);
-    }
-
-    environment.updateCaustics(caustics.target.texture);
-
     clock.start();
   }
 
+  marineSnow.update(now);
+
   // Render everything but the refractive water
   renderer.setRenderTarget(temporaryRenderTarget);
-  renderer.setClearColor(seaColor, 1);
+  renderer.setClearColor(look.fogColor, 1);
   renderer.clear();
 
   water.mesh.visible = false;
@@ -1315,11 +1289,12 @@ function animate() {
 
   // Then render the final scene with the refractive water
   renderer.setRenderTarget(null);
-  renderer.setClearColor(seaColor, 1);
+  renderer.setClearColor(look.fogColor, 1);
   renderer.clear();
 
   water.mesh.visible = true;
   renderer.render(scene, camera);
+  if (captureMode) window.__frames = (window.__frames || 0) + 1;
 
   window.requestAnimationFrame(animate);
 }
@@ -1351,28 +1326,22 @@ window.setReducedMotion = WhaleState.setReducedMotion;
 const loaded = [
   waterSimulation.loaded,
   water.loaded,
-  environmentMap.loaded,
   environment.loaded,
-  caustics.loaded,
   whalesLoaded,
 ];
 
 Promise.all(loaded).then(() => {
-  environmentMap.setGeometries(whaleMeshes, floorGeometry);
   environment.setGeometries(whaleMeshes, floorGeometry);
 
   environment.addTo(scene, whales);
 
   scene.add(water.mesh);
-
-  caustics.setDeltaEnvTexture(1. / environmentMap.size);
+  scene.add(marineSnow.points);
 
   createLabels();
   resize();
 
   checkWater();
-  checkEnvironmentMap();
-  caustics.clear();
   showDiagnostics();
 
   window.addEventListener('resize', resize);

@@ -5,10 +5,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Baleines — play whale songs</title>
-  <meta name="description" content="Play whale songs on a real-time WebGL sea: tap a whale or press 1–8, and watch the light ripple through the water.">
-  <meta name="theme-color" content="#06243f">
+  <meta name="description" content="Play whale songs in the deep sea: tap a pad or a whale, or press 1–8, and watch the whales answer.">
+  <meta name="theme-color" content="#021223">
   <meta property="og:title" content="Baleines — play whale songs">
-  <meta property="og:description" content="Tap the whales or press 1–8 to play their songs on a caustics-lit sea.">
+  <meta property="og:description" content="Tap the whales or press 1–8 to play their songs in the deep sea.">
   <meta property="og:image" content="https://pmalhaire.github.io/threejs-caustics/screenshots/top.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐋</text></svg>">
 
@@ -23,7 +23,7 @@
 
   <style>
     :root {
-      --sea: #06243f;
+      --sea: #021223;
       --ink: #eaf6ff;
       --muted: rgba(234, 246, 255, 0.72);
       --glass: rgba(6, 36, 63, 0.55);
@@ -106,6 +106,47 @@
     }
 
     .icon-button:hover { background: rgba(6, 36, 63, .75); }
+
+    /* Darkened screen edges, over the canvas */
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .8s ease;
+      background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0, 8, 18, .85) 100%);
+    }
+
+    /* Light shafts from the surface: soft slanted beams, fading with depth,
+       swaying slowly. Pure CSS over the canvas, so cheap on phones. */
+    #rays {
+      position: fixed;
+      inset: -10% -30%;
+      pointer-events: none;
+      opacity: 0;
+      mix-blend-mode: screen;
+      transition: opacity 1.2s ease;
+      background:
+        linear-gradient(90deg, transparent 16%, rgba(var(--ray), .16) 20%, transparent 26%),
+        linear-gradient(90deg, transparent 37%, rgba(var(--ray), .10) 42%, transparent 50%),
+        linear-gradient(90deg, transparent 58%, rgba(var(--ray), .14) 61%, transparent 65%),
+        linear-gradient(90deg, transparent 74%, rgba(var(--ray), .08) 80%, transparent 88%);
+      -webkit-mask-image: linear-gradient(180deg, #000 5%, transparent 70%);
+      mask-image: linear-gradient(180deg, #000 5%, transparent 70%);
+      transform: skewX(-14deg);
+      animation: rays-sway 17s ease-in-out infinite alternate;
+    }
+
+    @keyframes rays-sway {
+      0% { transform: skewX(-14deg) translateX(-3%); }
+      50% { transform: skewX(-10deg) translateX(2%); }
+      100% { transform: skewX(-16deg) translateX(4%); }
+    }
+
+    body { --ray: 190, 225, 255; }
+    .scene-ready #rays { opacity: 1; }
+
+    .scene-ready #vignette { opacity: .9; }
     .icon-button[aria-pressed="true"] .enter,
     .icon-button[aria-pressed="false"] .exit,
     .icon-button:not([aria-pressed]) .exit { display: none; }
@@ -311,12 +352,16 @@
 
     @media (prefers-reduced-motion: reduce) {
       * { transition-duration: .01s !important; animation-duration: .01s !important; }
+      #rays { animation: none; }
     }
   </style>
 </head>
 
 <body>
   <canvas id="canvas" tabindex="-1" aria-label="Whales under a rippling sea"></canvas>
+  <!-- Over the canvas, under the interface -->
+  <div id="rays" aria-hidden="true"></div>
+  <div id="vignette" aria-hidden="true"></div>
 
   <div id="labels">
     <div class="pads pads-drums" role="group" aria-label="Drums"></div>
@@ -344,7 +389,7 @@
       <button id="start" disabled data-label="Dive in">Loading…</button>
       <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
       <p class="credits">
-        Real-time caustics based on
+        Water simulation based on
         <a href="https://github.com/martinRenou/threejs-caustics" target="_blank" rel="noopener">martinRenou/threejs-caustics</a>
         · <a href="https://github.com/pmalhaire/threejs-caustics" target="_blank" rel="noopener">source</a>
       </p>

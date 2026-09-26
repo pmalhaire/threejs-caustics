@@ -1,21 +1,12 @@
 uniform vec3 light;
 
-// Light projection matrix
-uniform mat4 lightProjectionMatrix;
-uniform mat4 lightViewMatrix;
-
 varying float lightIntensity;
-varying vec3 lightPosition;
 varying vec3 worldPosition;
-
-const float waterSize = 1.0;
+varying vec3 worldNormal;
+// Per-vertex colour painted by the rigging pipeline (white when unused)
+varying vec3 vertexColor;
 
 #include <skinning_pars_vertex>
-
-// transform coods from [-1.,1] to [0, waterSize]
-vec3 transformCoords(vec3 v){
-  return waterSize * 0.5 + waterSize * 0.5 * v;
-}
 
 void main(void){
   #include <beginnormal_vertex>
@@ -25,16 +16,19 @@ void main(void){
   #include <skinning_vertex>
 
   vec4 skinnedPosition = vec4(transformed, 1.);
-  vec3 skinnedNormal = objectNormal;
+
+  #ifdef USE_COLOR
+    vertexColor = color;
+  #else
+    vertexColor = vec3(1.);
+  #endif
 
   worldPosition = (modelMatrix * skinnedPosition).xyz;
+  // World space (uniform scale only), so the light stays above the whale
+  // whichever way it swims.
+  worldNormal = normalize(mat3(modelMatrix) * objectNormal);
 
-  lightIntensity = - dot(light, normalize(skinnedNormal));
-
-  // Compute position in the light coordinates system, this will be used for
-  // comparing fragment depth with the caustics texture
-  vec4 lightRelativePosition = lightProjectionMatrix * lightViewMatrix * modelMatrix * skinnedPosition;
-  lightPosition = transformCoords(lightRelativePosition.xyz / lightRelativePosition.w);
+  lightIntensity = - dot(light, worldNormal);
 
   // The position of the vertex
   gl_Position = projectionMatrix * modelViewMatrix * skinnedPosition;
