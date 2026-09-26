@@ -1,6 +1,8 @@
 uniform vec3 light;
 
 uniform sampler2D water;
+// 1, or 0 to keep the surface flat when the simulation cannot be read
+uniform float waterStrength;
 uniform sampler2D env;
 uniform float deltaEnvTexture;
 
@@ -32,11 +34,11 @@ float transformCoords(float v){
 }
 
 void main() {
-  vec4 waterInfo = texture2D(water, transformCoords(position.xy));
+  vec4 waterInfo = texture2D(water, transformCoords(position.xy)) * waterStrength;
 
   // The water position is the vertex position on which we apply the height-map
   vec3 waterPosition = vec3(position.xy, position.z + waterInfo.r + waterHeight);
-  vec3 waterNormal = normalize(vec3(waterInfo.b, sqrt(1.0 - dot(waterInfo.ba, waterInfo.ba)), waterInfo.a)).xzy;
+  vec3 waterNormal = normalize(vec3(waterInfo.b, sqrt(max(0., 1.0 - dot(waterInfo.ba, waterInfo.ba))), waterInfo.a)).xzy;
 
   // This is the initial position: the ray starting point
   oldPosition = waterPosition;

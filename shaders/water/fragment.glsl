@@ -4,6 +4,10 @@ uniform samplerCube skybox;
 varying vec2 refractedPosition[3];
 varying vec3 reflected;
 varying float reflectionFactor;
+varying vec2 surfacePosition;
+
+// Deep sea color, the surface fades into it towards its edges
+uniform vec3 fadeColor;
 
 const float waterSize = 1.0;
 
@@ -22,5 +26,8 @@ void main() {
   refractedColor.g = texture2D(envMap, transformCoords(refractedPosition[1])).g;
   refractedColor.b = texture2D(envMap, transformCoords(refractedPosition[2])).b;
 
-  gl_FragColor = vec4(mix(refractedColor, reflectedColor, clamp(reflectionFactor, 0., 1.)), 1.);
+  vec3 color = mix(refractedColor, reflectedColor, clamp(reflectionFactor, 0., 0.6));
+
+  float fade = smoothstep(1.35, 1.95, length(surfacePosition));
+  gl_FragColor = vec4(mix(color, fadeColor, fade), 1.);
 }

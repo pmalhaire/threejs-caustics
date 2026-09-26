@@ -1,8 +1,11 @@
 uniform sampler2D water;
+// 1, or 0 to keep the surface flat when the simulation cannot be read
+uniform float waterStrength;
 
 varying vec2 refractedPosition[3];
 varying vec3 reflected;
 varying float reflectionFactor;
+varying vec2 surfacePosition;
 
 const float refractionFactor = 1.;
 
@@ -21,11 +24,12 @@ vec2 transformCoords(vec2 v){
 }
 
 void main() {
-  vec4 info = texture2D(water, transformCoords(position.xy));
+  surfacePosition = position.xy;
+  vec4 info = texture2D(water, transformCoords(position.xy)) * waterStrength;
 
   // The water position is the vertex position on which we apply the height-map
   vec3 pos = vec3(position.xy, position.z + info.r);
-  vec3 norm = normalize(vec3(info.b, sqrt(1.0 - dot(info.ba, info.ba)), info.a)).xzy;
+  vec3 norm = normalize(vec3(info.b, sqrt(max(0., 1.0 - dot(info.ba, info.ba))), info.a)).xzy;
 
   vec3 eye = normalize(pos - cameraPosition);
   vec3 refracted = normalize(refract(eye, norm, eta));

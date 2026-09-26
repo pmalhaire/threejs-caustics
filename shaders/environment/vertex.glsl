@@ -6,6 +6,7 @@ uniform mat4 lightViewMatrix;
 
 varying float lightIntensity;
 varying vec3 lightPosition;
+varying vec3 worldPosition;
 
 const float waterSize = 1.0;
 
@@ -15,6 +16,8 @@ vec3 transformCoords(vec3 v){
 }
 
 void main(void){
+  worldPosition = (modelMatrix * vec4(position, 1.)).xyz;
+
   lightIntensity = - dot(light, normalize(normal));
 
   // Compute position in the light coordinates system, this will be used for

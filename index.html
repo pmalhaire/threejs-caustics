@@ -1,47 +1,311 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <title>ThreeJS Caustics play music</title>
-  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/three@v0.117.0"></script>
-  <script type="text/javascript"
-    src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/controls/OrbitControls.js"></script>
-  <script type="text/javascript"
-    src="https://cdn.jsdelivr.net/npm/three@v0.117.0/examples/js/loaders/OBJLoader.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.js"></script>
-  <script type="text/javascript" src="https://spectorcdn.babylonjs.com/spector.bundle.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Baleines — play whale songs</title>
+  <meta name="description" content="Play whale songs on a real-time WebGL sea: tap a whale or press 1–8, and watch the light ripple through the water.">
+  <meta name="theme-color" content="#06243f">
+  <meta property="og:title" content="Baleines — play whale songs">
+  <meta property="og:description" content="Tap the whales or press 1–8 to play their songs on a caustics-lit sea.">
+  <meta property="og:image" content="https://pmalhaire.github.io/threejs-caustics/screenshots/top.png">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐋</text></svg>">
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.117.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.117.0/examples/js/loaders/OBJLoader.js"></script>
+
+  <link rel="preload" href="assets/whale.obj" as="fetch" crossorigin>
+
+  <style>
+    :root {
+      --sea: #06243f;
+      --ink: #eaf6ff;
+      --muted: rgba(234, 246, 255, 0.72);
+      --glass: rgba(6, 36, 63, 0.55);
+      --line: rgba(234, 246, 255, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--sea);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      display: block;
+      touch-action: none;
+      outline: none;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    }
+
+    .scene-ready #canvas { opacity: 1; }
+
+    /* Top bar */
+    .bar {
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .6s ease .3s;
+    }
+
+    .started .bar { opacity: 1; }
+
+    .bar > * { pointer-events: auto; }
+
+    .bar h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, .35);
+    }
+
+    .bar h1 span {
+      font-weight: 400;
+      color: var(--muted);
+      margin-left: 8px;
+      font-size: 14px;
+    }
+
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--glass);
+      color: var(--ink);
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .icon-button:hover { background: rgba(6, 36, 63, .75); }
+    .icon-button[aria-pressed="true"] .enter,
+    .icon-button[aria-pressed="false"] .exit,
+    .icon-button:not([aria-pressed]) .exit { display: none; }
+
+    /* Whale number pads */
+    #labels {
+      opacity: 0;
+      transition: opacity .6s ease .3s;
+    }
+
+    .started #labels { opacity: 1; }
+
+    .whale-label {
+      position: fixed;
+      transform: translate(-50%, -50%);
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-radius: 50%;
+      border: 1.5px solid var(--whale-color);
+      background: rgba(6, 36, 63, .6);
+      color: var(--ink);
+      font: 600 14px/1 system-ui, sans-serif;
+      cursor: pointer;
+      touch-action: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      transition: background .2s;
+    }
+
+    .whale-label:hover { background: rgba(6, 36, 63, .9); }
+
+    .whale-label.playing {
+      animation: pulse .9s ease-out;
+    }
+
+    @keyframes pulse {
+      0% { background: var(--whale-color); color: #06243f; box-shadow: 0 0 0 0 var(--whale-color); }
+      100% { box-shadow: 0 0 0 16px transparent; }
+    }
+
+    /* Hint */
+    .hint {
+      position: fixed;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      margin: 0;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--glass);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      width: max-content;
+      max-width: calc(100vw - 32px);
+      text-align: center;
+      line-height: 1.6;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .6s ease .6s;
+    }
+
+    .started .hint { opacity: 1; }
+    .hint kbd {
+      font: 600 12px ui-monospace, monospace;
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      color: var(--ink);
+    }
+
+    .touch-only { display: none; }
+    @media (pointer: coarse) {
+      .touch-only { display: inline; }
+      .mouse-only { display: none; }
+    }
+
+    /* Intro */
+    #intro {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: radial-gradient(ellipse at 50% 40%, rgba(6, 36, 63, .35), rgba(3, 18, 33, .85));
+      transition: opacity .8s ease, visibility .8s;
+      text-align: center;
+    }
+
+    .started #intro {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .intro-card { max-width: 420px; }
+
+    .intro-card .whale { font-size: 44px; line-height: 1; }
+
+    .intro-card h2 {
+      margin: 12px 0 8px;
+      font-size: clamp(30px, 8vw, 44px);
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+
+    .intro-card p {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    #start {
+      min-width: 200px;
+      padding: 14px 26px;
+      border-radius: 999px;
+      border: 0;
+      background: var(--ink);
+      color: var(--sea);
+      font: 600 16px system-ui, sans-serif;
+      cursor: pointer;
+      transition: transform .15s ease, opacity .2s;
+    }
+
+    #start:hover:not(:disabled) { transform: scale(1.03); }
+    #start:disabled { opacity: .65; cursor: progress; }
+
+    .progress {
+      width: 200px;
+      height: 3px;
+      margin: 18px auto 0;
+      border-radius: 3px;
+      background: var(--line);
+      overflow: hidden;
+      transition: opacity .4s;
+    }
+
+    .loaded .progress { opacity: 0; }
+
+    #progress-bar {
+      width: 0;
+      height: 100%;
+      background: var(--ink);
+      transition: width .3s ease;
+    }
+
+    .credits {
+      margin-top: 28px !important;
+      font-size: 12px !important;
+    }
+
+    .credits a { color: var(--muted); }
+
+    .error #start { background: #ffb4b4; }
+
+    :focus-visible { outline: 2px solid #9ad8ff; outline-offset: 2px; }
+
+    @media (max-width: 520px) {
+      .bar h1 span { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition-duration: .01s !important; animation-duration: .01s !important; }
+    }
+  </style>
 </head>
 
 <body>
+  <canvas id="canvas" tabindex="-1" aria-label="Whales under a rippling sea"></canvas>
 
-  <canvas id="canvas" width="1024px" height="800px"></canvas>
+  <div id="labels"></div>
 
-  <h1 class="title">
-    ThreeJS Caustics play music click on water then (1-8) keys
-  </h1>
-  <button onclick="openFullscreen();">Open Video in Fullscreen Mode</button>
+  <header class="bar">
+    <h1>Baleines <span>whale songs under the sea</span></h1>
+    <button id="fullscreen" class="icon-button" aria-label="Toggle fullscreen" aria-pressed="false" title="Fullscreen (F)">
+      <svg class="enter" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <svg class="exit" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+    </button>
+  </header>
 
+  <p class="hint">
+    <span class="mouse-only">Click a whale or press <kbd>1</kbd>–<kbd>8</kbd> · move to ripple the water</span>
+    <span class="touch-only">Tap the whales to make them sing</span>
+  </p>
 
+  <section id="intro">
+    <div class="intro-card">
+      <div class="whale" aria-hidden="true">🐋</div>
+      <h2>Baleines</h2>
+      <p>Eight whales are waiting under the surface. Tap one, or press <strong>1</strong>–<strong>8</strong>, to hear it sing.</p>
+      <button id="start" disabled data-label="Dive in">Loading…</button>
+      <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+      <p class="credits">
+        Real-time caustics based on
+        <a href="https://github.com/martinRenou/threejs-caustics" target="_blank" rel="noopener">martinRenou/threejs-caustics</a>
+        · <a href="https://github.com/pmalhaire/threejs-caustics" target="_blank" rel="noopener">source</a>
+      </p>
+    </div>
+  </section>
 
-  <!-- TODO fix note names which are no longer relevant -->
-  <!-- Drum and bass -->
-  <audio data-key="A0" src="./assets/sounds/EX_WS_perc_humpback_whale_stomp_Bb.wav"></audio>
-  <audio data-key="B0" src="./assets/sounds/EX_WS_bass_humpback_whale_deep_C.wav"></audio>
-
-  <audio data-key="C0" src="./assets/sounds/EX_WS_tone_humpback_whale_trumpet_B.wav"></audio>
-
-  <!-- Long phrases -->
-  <audio data-key="D0" src="./assets/sounds/EX_WS_texture_humpback_whale_ambience.wav"></audio>
-  <audio data-key="E0" src="./assets/sounds/EX_WS_tonal_humpback_whale_multiple.wav"></audio>
-
-  <audio data-key="F0" src="./assets/sounds/EX_WS_tonal_humpback_whale_deep_phrase.wav"></audio>
-
-  <!-- Drum kicks -->
-  <audio data-key="G0" src="./assets/sounds/EX_WS_tone_humpback_whale_zipper_F.wav"></audio>
-  <audio data-key="A1" src="./assets/sounds/EX_WS_clap_sperm_whale.wav"></audio>
-
-
-  <script type="text/javascript" src="index.js"></script>
+  <script src="index.js"></script>
 </body>
 
 </html>

@@ -14,15 +14,12 @@ void main() {
     float oldArea = length(dFdx(oldPosition)) * length(dFdy(oldPosition));
     float newArea = length(dFdx(newPosition)) * length(dFdy(newPosition));
 
-    float ratio;
-
-    // Prevent dividing by zero (debug NVidia drivers)
-    if (newArea == 0.) {
-      // Arbitrary large value
-      ratio = 2.0e+20;
-    } else {
-      ratio = oldArea / newArea;
-    }
+    // Light concentration: how much the refracted triangle shrank.
+    // Bounded, so degenerate (zero area) triangles cannot produce infinite
+    // light: with half float textures (iOS) position precision is low and
+    // this showed as bright streaks.
+    const float maxRatio = 20.;
+    float ratio = newArea > oldArea / maxRatio ? oldArea / newArea : maxRatio;
 
     causticsIntensity = causticsFactor * ratio;
   }
