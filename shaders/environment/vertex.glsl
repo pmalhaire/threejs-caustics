@@ -10,21 +10,32 @@ varying vec3 worldPosition;
 
 const float waterSize = 1.0;
 
+#include <skinning_pars_vertex>
+
 // transform coods from [-1.,1] to [0, waterSize]
 vec3 transformCoords(vec3 v){
   return waterSize * 0.5 + waterSize * 0.5 * v;
 }
 
 void main(void){
-  worldPosition = (modelMatrix * vec4(position, 1.)).xyz;
+  #include <beginnormal_vertex>
+  #include <skinbase_vertex>
+  #include <skinnormal_vertex>
+  #include <begin_vertex>
+  #include <skinning_vertex>
 
-  lightIntensity = - dot(light, normalize(normal));
+  vec4 skinnedPosition = vec4(transformed, 1.);
+  vec3 skinnedNormal = objectNormal;
+
+  worldPosition = (modelMatrix * skinnedPosition).xyz;
+
+  lightIntensity = - dot(light, normalize(skinnedNormal));
 
   // Compute position in the light coordinates system, this will be used for
   // comparing fragment depth with the caustics texture
-  vec4 lightRelativePosition = lightProjectionMatrix * lightViewMatrix * modelMatrix * vec4(position, 1.);
+  vec4 lightRelativePosition = lightProjectionMatrix * lightViewMatrix * modelMatrix * skinnedPosition;
   lightPosition = transformCoords(lightRelativePosition.xyz / lightRelativePosition.w);
 
   // The position of the vertex
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
+  gl_Position = projectionMatrix * modelViewMatrix * skinnedPosition;
 }

@@ -41,7 +41,7 @@ const cameraDistance = 2.7;
 // Center of the arc of whales
 const cameraTarget = new THREE.Vector3(0, 0.14, waterHeight);
 // A little wider than the original framing so no whale touches the edges
-const refHalfV = Math.tan(THREE.MathUtils.degToRad(35 / 2)) * 1.2; // world "y" extent
+const refHalfV = Math.tan(THREE.MathUtils.degToRad(35 / 2)) * 1.3; // world "y" extent
 const refHalfH = refHalfV * 1.5;                                      // world "x" extent
 
 const scene = new THREE.Scene();
@@ -52,6 +52,7 @@ scene.add(camera);
 const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.autoClear = false;
+console.info('Baleines: floatVertexTextures =', renderer.capabilities.floatVertexTextures);
 
 // ---------------------------------------------------------------------------
 // Floating point textures
@@ -279,7 +280,6 @@ const posRangeX = 1.8;
 const posRangeY = 3.0;
 
 const whalesCount = 8;
-const whales = [];
 const whalesPosition = [];
 
 // Each whale has its own color, used when it sings
@@ -317,34 +317,154 @@ function updateProgress() {
   if (bar) bar.style.width = `${value}%`;
 }
 
-const objLoader = new THREE.OBJLoader();
-const whalesLoaded = new Promise((resolve, reject) => {
-  objLoader.load('assets/whale.obj', (whaleObject) => {
-    const whaleGeometry = whaleObject.children[0].geometry;
-    whaleGeometry.computeVertexNormals();
-    const size = 0.0005;
+// Species assigned per whale index (0-based). classic.glb is not produced
+// yet (separate Blender session, see the plan); it falls back to humpback
+// until it lands.
+const whaleModelUrls = {
+  humpback: 'assets/humpback.glb',
+  classic: 'assets/classic.glb',
+  blue: 'assets/blue.glb',
+  sperm: 'assets/sperm.glb',
+};
+const whaleSpeciesByIndex = [
+  'humpback', // 1
+  'blue',     // 2
+  'humpback', // 3
+  'classic',  // 4
+  'humpback', // 5
+  'classic',  // 6
+  'classic',  // 7
+  'sperm',    // 8
+];
+// The Blender pipeline normalises every whale to a body length of 1 unit
+// (see normalise() in whale_pipeline.py); the whale slots here are only
+// ~0.36-0.5 units apart, and the original static whale.obj placement (same
+// layout) had a body length around 0.38, so that's the scale to match.
+const BASE_WHALE_SCALE = 0.24;
+// Extra uniform scale per species (blue whale is bigger, see plan step 4)
+const whaleScaleBySpecies = { humpback: 1, classic: 1, blue: 1.2, sperm: 1 };
 
-    whaleGeometry.rotateZ(Math.PI / 2.);
-    whaleGeometry.scale(size, size, size);
+const gltfLoader = new THREE.GLTFLoader();
 
-    for (let i = 0; i < whalesCount; i++) {
-      const whale = whaleGeometry.clone();
-      const { posX, posY } = whaleTranslateFromIndex(i);
-      whale.translate(posX, posY, 0);
-      whale.computeBoundingSphere();
-      const { x, y, z } = whale.boundingSphere.center;
-      whalesPosition.push(new THREE.Vector3(x, y, z));
-      whales.push(whale);
+function loadGltf(url) {
+  return new Promise((resolve, reject) => {
+    gltfLoader.load(url, resolve, undefined, reject);
+  });
+}
+
+// Loaded skinned template per species, keyed by whaleModelUrls key.
+// Falls back to humpback if a species fails to load (classic.glb missing).
+async function loadWhaleTemplates() {
+  const templates = {};
+  const uniqueSpecies = [...new Set(whaleSpeciesByIndex)];
+  await Promise.all(uniqueSpecies.map(async (species) => {
+    try {
+      const gltf = await loadGltf(whaleModelUrls[species]);
+      // The Blender pipeline exports standard glTF: back = +Y, head = -Z,
+      // tail = +Z (checked on the skeleton). This scene is Z-up, so +90 deg
+      // about X puts the back on +Z and the head on +Y (-90 deg flipped the
+      // whale onto its back with the head on -Y).
+      gltf.scene.rotateX(Math.PI / 2);
+      gltf.scene.updateMatrixWorld(true);
+      // Clone the whole scene (not just the SkinnedMesh) so the bone/armature
+      // hierarchy, wherever it sits relative to the mesh, comes along.
+      templates[species] = { scene: gltf.scene, animations: gltf.animations };
+    } catch (error) {
+      console.warn(`Baleines: ${species} model unavailable, falling back to humpback`, error);
+      templates[species] = null;
     }
-    progress.whale = 1;
-    updateProgress();
-    resolve();
-  }, (event) => {
-    if (event.lengthComputable) {
-      progress.whale = event.loaded / event.total;
-      updateProgress();
+  }));
+  return templates;
+}
+
+const whales = [];       // top-level object per whale (position/orientation)
+const whaleMeshes = [];  // its SkinnedMesh descendant (material assignment)
+const whaleMixers = [];  // AnimationMixer playing the 'idle' swim clip
+const whaleStates = [];  // WhaleState per whale (circle/jump, plan C1-C7)
+const whaleFins = [];    // { L, R } pectoral fin bones, steered on top of the clip
+const whaleMaxPitchDeg = new Array(whalesCount).fill(46);
+// How far the pectoral fins angle to steer into a turn (radians).
+const FIN_STEER_AMPLITUDE = THREE.MathUtils.degToRad(18);
+
+const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
+  // Make sure we always have at least the humpback template to fall back on.
+  if (!templates.humpback) {
+    const gltf = await loadGltf(whaleModelUrls.humpback);
+    gltf.scene.rotateX(Math.PI / 2);
+    gltf.scene.updateMatrixWorld(true);
+    templates.humpback = { scene: gltf.scene, animations: gltf.animations };
+  }
+
+  // Slot centers and their nearest-neighbor distance, used below to size
+  // each whale's idle loop without ever letting two bodies touch.
+  const origins = [];
+  for (let i = 0; i < whalesCount; i++) origins.push(whaleTranslateFromIndex(i));
+  function nearestNeighborDist(i) {
+    let min = Infinity;
+    for (let j = 0; j < whalesCount; j++) {
+      if (j === i) continue;
+      const dx = origins[i].posX - origins[j].posX;
+      const dy = origins[i].posY - origins[j].posY;
+      min = Math.min(min, Math.hypot(dx, dy));
     }
-  }, reject);
+    return min;
+  }
+
+  for (let i = 0; i < whalesCount; i++) {
+    const species = whaleSpeciesByIndex[i];
+    const template = templates[species] || templates.humpback;
+    const effectiveSpecies = templates[species] ? species : 'humpback';
+
+    // The loaded model (with its one-time up-axis fix baked into its own
+    // rotation) is a static child; only the mount below is animated each
+    // frame, so the axis fix never gets clobbered by the swim pose.
+    const whaleModel = THREE.SkeletonUtils.clone(template.scene);
+    const scale = BASE_WHALE_SCALE * whaleScaleBySpecies[effectiveSpecies];
+    whaleModel.scale.setScalar(scale);
+
+    const mount = new THREE.Object3D();
+    mount.add(whaleModel);
+
+    const { posX, posY } = origins[i];
+    mount.position.set(posX, posY, 0);
+    mount.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(whaleModel);
+    const center = box.getCenter(new THREE.Vector3());
+    whalesPosition.push(center);
+    whales.push(mount);
+    whaleMeshes.push(whaleModel.getObjectByProperty('type', 'SkinnedMesh'));
+    whaleFins.push({
+      L: whaleModel.getObjectByName('fin.L'),
+      R: whaleModel.getObjectByName('fin.R'),
+    });
+
+    const mixer = new THREE.AnimationMixer(whaleModel);
+    const idleClip = (template.animations || []).find((clip) => clip.name === 'idle');
+    if (idleClip) mixer.clipAction(idleClip).play();
+    // The authored clip's fluke/fin sway is subtle (a few degrees) and easy
+    // to miss at this scale; play it faster so the swim stroke actually
+    // reads as propulsion instead of a static pose.
+    mixer.timeScale = 1.8;
+    whaleMixers.push(mixer);
+
+    // Blue whale (plan step 4): smaller jump pitch, lowered rest center.
+    const isBlue = effectiveSpecies === 'blue';
+    if (isBlue) whaleMaxPitchDeg[i] = 37;
+
+    // Size the idle circle from the whale's own body length and the gap to
+    // its closest neighbor, so it swims a visible loop without the two
+    // bodies ever reaching each other at their closest approach.
+    const size = box.getSize(new THREE.Vector3());
+    const bodyLength = Math.max(size.x, size.y);
+    const gap = nearestNeighborDist(i);
+    const safeRadius = Math.max(0, (gap - bodyLength) / 2);
+    const idleRadius = THREE.MathUtils.clamp(safeRadius, 0.02, bodyLength * 0.9);
+
+    whaleStates.push(WhaleState.createState(i, { x: posX, y: posY }, isBlue ? -0.01 : 0, idleRadius));
+  }
+  progress.whale = 1;
+  updateProgress();
 });
 
 // Sea floor, receiving the caustics
@@ -539,19 +659,28 @@ class EnvironmentMap {
       loadFile('shaders/environment_mapping/fragment.glsl')
     ];
 
-    this._meshes = [];
+    this._whaleMeshes = [];
+    this._floorMesh = null;
 
     this.loaded = Promise.all(shadersPromises)
       .then(([vertexShader, fragmentShader]) => {
-        this._material = new THREE.ShaderMaterial({
+        this._floorMaterial = new THREE.ShaderMaterial({
           vertexShader: vertexShader,
           fragmentShader: fragmentShader,
+        });
+        this._whaleMaterial = new THREE.ShaderMaterial({
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+          skinning: true,
         });
       });
   }
 
-  setGeometries(geometries) {
-    this._meshes = geometries.map((geometry) => new THREE.Mesh(geometry, this._material));
+  // whaleMeshes: SkinnedMesh instances already positioned/added to the real
+  // scene by Environment; floorGeometry: static, not skinned.
+  setGeometries(whaleMeshes, floorGeometry) {
+    this._whaleMeshes = whaleMeshes;
+    this._floorMesh = new THREE.Mesh(floorGeometry, this._floorMaterial);
   }
 
   render(renderer) {
@@ -561,9 +690,17 @@ class EnvironmentMap {
     renderer.setClearColor(black, 0);
     renderer.clear();
 
-    for (let mesh of this._meshes) {
+    for (let mesh of this._whaleMeshes) {
+      const visibleMaterial = mesh.material;
+      mesh.material = this._whaleMaterial;
+      // The whale is only added once to the real scene; keep its skeleton
+      // in sync here too since this pass renders it in isolation.
+      mesh.skeleton.update();
       renderer.render(mesh, camera);
+      mesh.material = visibleMaterial;
     }
+
+    if (this._floorMesh) renderer.render(this._floorMesh, camera);
 
     renderer.setRenderTarget(oldTarget);
   }
@@ -689,7 +826,7 @@ class Environment {
     });
   }
 
-  _createMaterial(baseColor, causticsStrength) {
+  _createMaterial(baseColor, causticsStrength, skinning) {
     const material = this._baseMaterial.clone();
     // Share the matrices with the camera (clone() copies them)
     material.uniforms['lightProjectionMatrix'].value = camera.projectionMatrix;
@@ -697,21 +834,25 @@ class Environment {
     material.uniforms['baseColor'].value = baseColor;
     material.uniforms['causticsStrength'].value = causticsStrength;
     material.uniforms['fadeColor'].value = seaColor;
+    material.skinning = !!skinning;
     return material;
   }
 
-  setGeometries(whaleGeometries, floor) {
+  // whaleMeshes: SkinnedMesh instances already positioned/added to the scene
+  // by the caller; floor: static PlaneBufferGeometry, not skinned.
+  setGeometries(whaleMeshes, floor) {
     this._meshes = [];
     this.whaleMaterials = [];
 
-    whaleGeometries.forEach((geometry, i) => {
-      const material = this._createMaterial(whaleBaseColor, 1.0);
+    whaleMeshes.forEach((mesh, i) => {
+      const material = this._createMaterial(whaleBaseColor, 1.0, true);
       material.uniforms['glowColor'].value = whaleColors[i];
       this.whaleMaterials.push(material);
-      this._meshes.push(new THREE.Mesh(geometry, material));
+      mesh.material = material;
+      this._meshes.push(mesh);
     });
 
-    const floorMaterial = this._createMaterial(floorBaseColor, 0.9);
+    const floorMaterial = this._createMaterial(floorBaseColor, 0.9, false);
     const floorMesh = new THREE.Mesh(floor, floorMaterial);
     floorMesh.frustumCulled = false;
     this._meshes.push(floorMesh);
@@ -727,10 +868,14 @@ class Environment {
     this.whaleMaterials[index].uniforms['glow'].value = value;
   }
 
-  addTo(scene) {
-    for (let mesh of this._meshes) {
-      scene.add(mesh);
+  // roots: top-level whale objects carrying position/scale (the SkinnedMesh
+  // itself is a descendant and must not be reparented directly, or it loses
+  // that placement); the floor mesh is added as-is.
+  addTo(scene, roots) {
+    for (let root of roots) {
+      scene.add(root);
     }
+    scene.add(this._meshes[this._meshes.length - 1]);
   }
 
 }
@@ -793,8 +938,14 @@ const glowStart = new Array(whalesCount).fill(-Infinity);
 const glowLevels = new Array(whalesCount).fill(0);
 
 function playWhale(index) {
-  glowStart[index] = performance.now() / 1000;
+  const nowSeconds = performance.now() / 1000;
+  glowStart[index] = nowSeconds;
   pulseLabel(index);
+
+  // C2/C4: starts an autonomous jump if the whale was idle; a whale already
+  // jumping keeps its trajectory, this call only re-triggers wave/sound/glow.
+  const state = whaleStates[index];
+  if (state) WhaleState.startJump(state, nowSeconds);
 
   const buffer = soundBuffers[index];
   if (!buffer) return;
@@ -1068,13 +1219,45 @@ function showDiagnostics() {
 // Main loop
 // ---------------------------------------------------------------------------
 
+let lastAnimateTime = performance.now() / 1000;
+
 function animate() {
   // Fade the whales glow
   const now = performance.now() / 1000;
+  const delta = Math.max(0, now - lastAnimateTime);
+  lastAnimateTime = now;
+
   for (let i = 0; i < whalesCount; i++) {
     const level = Math.max(0, 1 - (now - glowStart[i]) / glowDuration);
     glowLevels[i] = level;
     environment.setGlow(i, level * level * (3 - 2 * level));
+  }
+
+  // C1-C7: idle circle / autonomous jump per whale, plus the swim clip.
+  for (let i = 0; i < whales.length; i++) {
+    const state = whaleStates[i];
+    const splash = WhaleState.checkSplash(state, now);
+    if (splash) waterSimulation.addDrop(renderer, splash.x, splash.y, 0.03, 0.02);
+
+    const pose = WhaleState.updatePose(state, now, whaleMaxPitchDeg[i]);
+    const whale = whales[i];
+    whale.position.set(pose.x, pose.y, pose.z || 0);
+    // The model's head points along +Y, while `heading` is the direction of
+    // travel measured from +X, hence the -PI/2 (otherwise it swims sideways).
+    // 'ZXY': yaw about world Z first, then pitch about the whale's own
+    // lateral axis, then roll about its own head-tail axis. With the default
+    // 'XYZ' the bank became a nose dive depending on the heading.
+    whale.rotation.set(pose.pitch || 0, pose.roll || pose.tilt || 0, (pose.heading || 0) - Math.PI / 2, 'ZXY');
+
+    whaleMixers[i].update(delta);
+
+    // Steering reads through the pectoral fins (angled into the turn), on
+    // top of the clip's own caudal-fin swim stroke — not from an abstract
+    // yaw of the whole body.
+    const fins = whaleFins[i];
+    const steer = pose.steer || 0;
+    if (fins && fins.L) fins.L.rotateX(-steer * FIN_STEER_AMPLITUDE);
+    if (fins && fins.R) fins.R.rotateX(steer * FIN_STEER_AMPLITUDE);
   }
 
   // Update the water (~30 simulation steps per second)
@@ -1142,6 +1325,9 @@ function start() {
   canvas.focus();
 }
 
+// C7: exposed for tests / accessibility toggles.
+window.setReducedMotion = WhaleState.setReducedMotion;
+
 const loaded = [
   waterSimulation.loaded,
   water.loaded,
@@ -1152,10 +1338,10 @@ const loaded = [
 ];
 
 Promise.all(loaded).then(() => {
-  environmentMap.setGeometries([...whales, floorGeometry]);
-  environment.setGeometries(whales, floorGeometry);
+  environmentMap.setGeometries(whaleMeshes, floorGeometry);
+  environment.setGeometries(whaleMeshes, floorGeometry);
 
-  environment.addTo(scene);
+  environment.addTo(scene, whales);
 
   scene.add(water.mesh);
 
