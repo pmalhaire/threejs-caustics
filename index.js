@@ -458,7 +458,10 @@ const whaleMeshes = [];  // its SkinnedMesh descendant (material assignment)
 const whaleMixers = [];  // AnimationMixer playing the 'idle' swim clip
 const whaleStates = [];  // WhaleState per whale (free swim / jump)
 const whaleFins = [];    // { L, R } pectoral fin bones, steered on top of the clip
-const whaleMaxPitchDeg = new Array(whalesCount).fill(46);
+// Steepest nose-up angle of each whale's jump; also scales its height.
+const whaleMaxPitchDeg = new Array(whalesCount).fill(55);
+// Playback speed of the authored swim clip.
+const SWIM_STROKE = 1.8;
 // How far the pectoral fins angle to steer into a turn (radians).
 const FIN_STEER_AMPLITUDE = THREE.MathUtils.degToRad(18);
 
@@ -505,12 +508,13 @@ const whalesLoaded = loadWhaleTemplates().then(async (templates) => {
     // The authored clip's fluke/fin sway is subtle (a few degrees) and easy
     // to miss at this scale; play it faster so the swim stroke actually
     // reads as propulsion instead of a static pose.
-    mixer.timeScale = 1.8;
+    mixer.timeScale = SWIM_STROKE;
     whaleMixers.push(mixer);
 
-    // Blue whale (plan step 4): smaller jump pitch, lowered rest center.
+    // Blue whale: it rarely breaches; a low, flat lunge that barely clears
+    // the water. Lowered rest centre too.
     const isBlue = effectiveSpecies === 'blue';
-    if (isBlue) whaleMaxPitchDeg[i] = 37;
+    if (isBlue) whaleMaxPitchDeg[i] = 32;
 
     const size = box.getSize(new THREE.Vector3());
     whaleStates.push(WhaleState.createState(i, { x: posX, y: posY }, isBlue ? -0.01 : 0, {
@@ -759,11 +763,20 @@ class Environment {
           fogColor: { value: look.fogColor },
           fogNear: { value: look.fog[0] },
           fogFar: { value: look.fog[1] },
+          underwaterOnly: { value: 0 },
         },
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
       });
     });
+  }
+
+  // While rendering what the water surface refracts, leave out whatever is
+  // above the surface (a whale in mid-jump).
+  setUnderwaterOnly(enabled) {
+    for (const material of this.whaleMaterials) {
+      material.uniforms['underwaterOnly'].value = enabled ? 1 : 0;
+    }
   }
 
   _createMaterial(baseColor, isWhale) {
@@ -1238,8 +1251,8 @@ function animate() {
   WhaleState.step(whaleStates, now, delta, swimArea);
   for (let i = 0; i < whales.length; i++) {
     const state = whaleStates[i];
-    const splash = WhaleState.checkSplash(state, now);
-    if (splash) waterSimulation.addDrop(renderer, splash.x, splash.y, 0.03, 0.02);
+    const splash = WhaleState.checkSplash(state);
+    if (splash) waterSimulation.addDrop(renderer, splash.x, splash.y, splash.radius, splash.strength);
 
     const pose = WhaleState.updatePose(state, now, whaleMaxPitchDeg[i]);
     const whale = whales[i];
@@ -1251,6 +1264,8 @@ function animate() {
     // 'XYZ' the bank became a nose dive depending on the heading.
     whale.rotation.set(pose.pitch || 0, pose.roll || pose.tilt || 0, (pose.heading || 0) - Math.PI / 2, 'ZXY');
 
+    // Fluke beat: faster while gathering speed for a jump, resting in the air
+    whaleMixers[i].timeScale = SWIM_STROKE * (pose.stroke || 1);
     whaleMixers[i].update(delta);
 
     // Steering reads through the pectoral fins (angled into the turn), on
@@ -1283,7 +1298,9 @@ function animate() {
   renderer.clear();
 
   water.mesh.visible = false;
+  environment.setUnderwaterOnly(true);
   renderer.render(scene, camera);
+  environment.setUnderwaterOnly(false);
 
   water.setEnvMapTexture(temporaryRenderTarget.texture);
 

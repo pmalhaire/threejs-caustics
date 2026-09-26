@@ -10,8 +10,19 @@
 'use strict';
 
 const WhaleState = (() => {
-  const JUMP_DURATION = 1.4; // seconds
-  const SPLASH_TIMES = [0.30, 0.85]; // seconds into the jump
+  const JUMP_DURATION = 2.4; // seconds, from the wind-up dip to swimming again
+  // Height of the whale's centre through the jump (relative to its swimming
+  // depth), as keys over the normalised jump time: dip to gain speed, burst
+  // out, apex, fall back, dive under, level out. Interpolated as a smooth
+  // (C1) curve with flat ends, so the jump starts and ends at rest vertically.
+  const JUMP_KEYS = [[0, 0], [0.18, -0.045], [0.42, 0.10], [0.56, 0.24], [0.70, 0.10], [0.84, -0.06], [1, 0]];
+  // Nose angle through the jump, as a fraction of the whale's steepest
+  // pitch: slightly down in the dip, up on the way out, rolling over at the
+  // apex, down on re-entry, level again. Its own curve rather than the
+  // direction of travel: that one flips too fast at the apex, where the
+  // whale barely moves forward.
+  const PITCH_KEYS = [[0, 0], [0.13, -0.2], [0.32, 0.95], [0.47, 0.8], [0.60, 0], [0.74, -0.85], [0.88, -0.3], [1, 0]];
+  const SURFACE = 0.07;      // centre height at which the body breaks the surface
   const MAX_TURN_RATE = 0.9; // rad/s: the tightest turn a whale will make
   const TURN_EASE = 2.5;     // 1/s: how fast the yaw rate follows the steering wish
   const BANK = THREE.MathUtils.degToRad(15);
@@ -43,7 +54,11 @@ const WhaleState = (() => {
       jumping: false,
       jumpStart: 0,
       jumpHeading: 0,
-      lastSplashIndex: -1,
+      jumpX: 0,
+      jumpY: 0,
+      jumpZ: 0,             // last jump height, to spot surface crossings
+      jumpRoll: 1,          // which side the whale twists towards
+      splash: null,
     };
   }
 
@@ -184,40 +199,97 @@ const WhaleState = (() => {
     state.jumping = true;
     state.jumpStart = t;
     state.jumpHeading = state.heading;
+    state.jumpX = state.x;
+    state.jumpY = state.y;
+    state.jumpZ = 0;
+    state.jumpRoll = state.index % 2 ? -1 : 1;
     state.turnRate = 0;
-    state.lastSplashIndex = -1;
+    state.splash = null;
   }
 
-  // Jump: pure function of elapsed time, in place (height/pitch/roll only).
+  // Smooth curve through keys (cubic Hermite, Catmull-Rom tangents inside,
+  // flat at both ends): value and slope (per unit of u).
+  function smoothKeys(k, u) {
+    let i = 0;
+    while (i < k.length - 2 && u > k[i + 1][0]) i++;
+    const [t0, p0] = k[i];
+    const [t1, p1] = k[i + 1];
+    const slope = (j) => (j === 0 || j === k.length - 1)
+      ? 0 : (k[j + 1][1] - k[j - 1][1]) / (k[j + 1][0] - k[j - 1][0]);
+    const h = t1 - t0;
+    const x = THREE.MathUtils.clamp((u - t0) / h, 0, 1);
+    const m0 = slope(i) * h;
+    const m1 = slope(i + 1) * h;
+    const x2 = x * x;
+    const x3 = x2 * x;
+    const value = (2 * x3 - 3 * x2 + 1) * p0 + (x3 - 2 * x2 + x) * m0 + (-2 * x3 + 3 * x2) * p1 + (x3 - x2) * m1;
+    const derivative = ((6 * x2 - 6 * x) * p0 + (3 * x2 - 4 * x + 1) * m0 + (-6 * x2 + 6 * x) * p1 + (3 * x2 - 2 * x) * m1) / h;
+    return { value, derivative };
+  }
+
+  // Forward speed through the jump, as a multiple of the cruising speed:
+  // 1 + BOOST * sin^2(pi u), so it surges in the middle and blends back.
+  const BOOST = 1.3;
+  function jumpDistance(u, speed) {
+    // integral of speed * (1 + BOOST sin^2(pi u)) over the jump time
+    return speed * JUMP_DURATION * (u + BOOST * (u / 2 - Math.sin(2 * Math.PI * u) / (4 * Math.PI)));
+  }
+
+  // Jump pose: a smooth arc along the heading the whale had when tapped.
+  // The nose follows the direction of travel (up out of the water, down back
+  // in), the body twists onto its side in the air, and the fluke beats hard
+  // on the way up and rests in the air (`stroke`).
   function jumpPose(state, t, maxPitchDeg) {
     const elapsed = t - state.jumpStart;
     const u = THREE.MathUtils.clamp(elapsed / JUMP_DURATION, 0, 1);
-    const arc = Math.sin(u * Math.PI);
-    const pitchDeg = maxPitchDeg == null ? 46 : maxPitchDeg;
+    // Higher jumps for the whales that pitch up more (the blue whale barely
+    // clears the water).
+    const scale = (maxPitchDeg == null ? 55 : maxPitchDeg) / 55;
+    const z = smoothKeys(JUMP_KEYS, u).value * scale;
+    const pitch = smoothKeys(PITCH_KEYS, u).value * THREE.MathUtils.degToRad(maxPitchDeg == null ? 55 : maxPitchDeg);
+
+    const distance = jumpDistance(u, state.speed);
+    const x = state.jumpX + Math.cos(state.jumpHeading) * distance;
+    const y = state.jumpY + Math.sin(state.jumpHeading) * distance;
+
+    // Twist onto the side while airborne, back upright under water
+    const air = THREE.MathUtils.clamp((u - 0.36) / 0.52, 0, 1);
+    const roll = state.jumpRoll * THREE.MathUtils.degToRad(70) * scale * Math.sin(Math.PI * air) ** 2;
+
+    // Fluke: hard strokes while gaining speed, still in the air
+    const out = THREE.MathUtils.smoothstep(u, 0.36, 0.44) * (1 - THREE.MathUtils.smoothstep(u, 0.68, 0.78));
+    const stroke = (1 + 1.2 * Math.sin(Math.PI * THREE.MathUtils.clamp(u / 0.42, 0, 1))) * (1 - 0.8 * out);
+
+    // Splash where the body actually crosses the surface: out, then back in
+    // (harder, and again from the tail a moment later).
+    const surface = SURFACE + state.baseZ;
+    const previous = state.jumpZ;
+    const current = state.baseZ + z;
+    if (previous < surface && current >= surface) {
+      state.splash = { x, y, radius: 0.04, strength: 0.03 };
+    } else if (previous > surface && current <= surface) {
+      state.splash = { x, y, radius: 0.07, strength: 0.06 };
+    }
+    state.jumpZ = current;
+    state.x = x;
+    state.y = y;
+
     return {
-      x: state.x,
-      y: state.y,
-      z: state.baseZ + arc * 0.12,
+      x, y, z: current,
       heading: state.jumpHeading,
-      pitch: arc * THREE.MathUtils.degToRad(pitchDeg),
-      roll: Math.sin(u * Math.PI * 2) * THREE.MathUtils.degToRad(8),
+      pitch,
+      roll,
       steer: 0,
+      stroke,
       done: elapsed >= JUMP_DURATION,
     };
   }
 
-  // Splashes at fixed instants of the jump (water exit / entry).
-  function checkSplash(state, t) {
-    if (!state.jumping) return null;
-    const elapsed = t - state.jumpStart;
-    for (let i = 0; i < SPLASH_TIMES.length; i++) {
-      if (i <= state.lastSplashIndex) continue;
-      if (elapsed >= SPLASH_TIMES[i]) {
-        state.lastSplashIndex = i;
-        return { x: state.x, y: state.y };
-      }
-    }
-    return null;
+  // Splash to show this frame (surface crossing during a jump), if any.
+  function checkSplash(state) {
+    const splash = state.splash;
+    state.splash = null;
+    return splash;
   }
 
   // Current pose to apply to the whale (after step()).
@@ -233,7 +305,8 @@ const WhaleState = (() => {
       }
       const pose = jumpPose(state, t, maxPitchDeg);
       if (!pose.done) return pose;
-      state.jumping = false; // resume swimming from where it jumped
+      // Resume swimming from where it landed, same heading and speed.
+      state.jumping = false;
     }
     const steer = state.turnRate / MAX_TURN_RATE;
     return {

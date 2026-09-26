@@ -34,7 +34,7 @@ from mathutils import Matrix, Vector
 SETTINGS = {
     'species': 'humpback',        # humpback | blue | sperm
     'out': '//humpback.glb',      # '//' = next to the .blend file
-    'target_tris': 3000,          # app budget per whale
+    'target_tris': 6000,          # app budget per whale
     'head_axis': 'auto',          # 'auto' or one of +X -X +Y -Y +Z -Z (where the head points)
     'up_axis': '+Z',              # where the back points in the source model
     'idle_seconds': 2.4,          # loop duration
@@ -45,13 +45,22 @@ SETTINGS = {
 # biology: humpback flippers are up to a third of the body length and white;
 # blue whale flippers are short and the whale is uniformly blue-grey; the sperm
 # whale is dark grey with small flippers.
+# Colours from reference photos. Optional pattern keys used by paint():
+#   white_fins  flippers lighten towards the belly colour (humpback)
+#   throat      (from, to) head-relative range where the belly colour shows
+#               (humpback: white throat and chest, dark elsewhere underneath)
+#   mottle      strength of blotchy light/dark patches (blue whale)
+#   lips        lighter mouth line and jaw (sperm whale)
 SPECIES = {
-    'humpback': {'fin_root': 0.30, 'fin_length': 0.30, 'white_fins': True,
-                 'back': (0.10, 0.16, 0.24), 'belly': (0.85, 0.88, 0.90)},
-    'blue':     {'fin_root': 0.25, 'fin_length': 0.12, 'white_fins': False,
-                 'back': (0.30, 0.40, 0.50), 'belly': (0.45, 0.53, 0.60)},
-    'sperm':    {'fin_root': 0.33, 'fin_length': 0.08, 'white_fins': False,
-                 'back': (0.20, 0.20, 0.22), 'belly': (0.35, 0.35, 0.37)},
+    'humpback': {'fin_root': 0.28, 'fin_length': 0.30, 'white_fins': True,
+                 'back': (0.07, 0.08, 0.10), 'belly': (0.86, 0.88, 0.89),
+                 'throat': (0.02, 0.62), 'mottle': 0.08},
+    'blue':     {'fin_root': 0.26, 'fin_length': 0.12, 'white_fins': False,
+                 'back': (0.27, 0.36, 0.46), 'belly': (0.38, 0.46, 0.54),
+                 'mottle': 0.35},
+    'sperm':    {'fin_root': 0.36, 'fin_length': 0.075, 'white_fins': False,
+                 'back': (0.19, 0.19, 0.21), 'belly': (0.27, 0.27, 0.29),
+                 'mottle': 0.2, 'lips': True},
     'classic':  {'fin_root': 0.30, 'fin_length': 0.22, 'white_fins': False,
                  'back': (0.15, 0.18, 0.22), 'belly': (0.55, 0.58, 0.62)},
 }
@@ -170,6 +179,50 @@ def half_width(mesh, y, band=0.03):
     return max(xs) if xs else 0.05
 
 
+def fin_islands(obj):
+    """Pectoral fin vertices: {'L': points, 'R': points} (L = +X side).
+    whale_gen.py tags them in the 'fin_shape.L/R' vertex groups (the groups
+    are removed here, they are not bones); otherwise, fins built as separate
+    shells are found as connected components off the midline. Empty when
+    neither applies (e.g. the classic model)."""
+    mesh = obj.data
+    tagged = {side: obj.vertex_groups.get('fin_shape.' + side) for side in ('L', 'R')}
+    if all(tagged.values()):
+        fins = {side: [v.co.copy() for v in mesh.vertices
+                       if any(g.group == group.index and g.weight > 0.5 for g in v.groups)]
+                for side, group in tagged.items()}
+        for group in tagged.values():
+            obj.vertex_groups.remove(group)
+        return fins if all(fins.values()) else {}
+
+    neighbours = {v.index: [] for v in mesh.vertices}
+    for edge in mesh.edges:
+        a, b = edge.vertices
+        neighbours[a].append(b)
+        neighbours[b].append(a)
+    seen, islands = set(), []
+    for start in neighbours:
+        if start in seen:
+            continue
+        stack, island = [start], []
+        seen.add(start)
+        while stack:
+            index = stack.pop()
+            island.append(mesh.vertices[index].co.copy())
+            for other in neighbours[index]:
+                if other not in seen:
+                    seen.add(other)
+                    stack.append(other)
+        islands.append(island)
+    fins = {}
+    for island in islands:
+        cx = sum(p.x for p in island) / len(island)
+        # pectoral fins sit well off the midline; body, flukes and dorsal fin don't
+        if abs(cx) > 0.06:
+            fins['L' if cx > 0 else 'R'] = island
+    return fins if len(fins) == 2 else {}
+
+
 def build_armature(obj, species):
     """8 bones: body (head part, rigid), spine1..spine4, fluke, fin.L, fin.R."""
     mesh = obj.data
@@ -200,14 +253,24 @@ def build_armature(obj, species):
         bone.roll = 0.0
         previous = bone
 
+    islands = fin_islands(obj)
     y_root = 0.5 - species['fin_root']
     z_root = spine_height(mesh, y_root) - 0.03
     x_root = half_width(mesh, y_root, 0.02) * 0.6
     reach = species['fin_length']
     for side, sign in (('L', 1), ('R', -1)):
         fin = data.edit_bones.new('fin.' + side)
-        fin.head = (sign * x_root, y_root, z_root)
-        fin.tail = (sign * (x_root + reach * 0.8), y_root - reach * 0.5, z_root - reach * 0.15)
+        if islands:
+            # Follow the actual fin: root at its innermost vertices (at or
+            # inside the body), tip at the farthest point from there.
+            island = sorted(islands[side], key=lambda p: abs(p.x))
+            inner = island[:max(3, len(island) // 10)]
+            root = sum(inner, Vector()) / len(inner)
+            tip = max(island, key=lambda p: (p - root).length)
+            fin.head, fin.tail = root, tip
+        else:
+            fin.head = (sign * x_root, y_root, z_root)
+            fin.tail = (sign * (x_root + reach * 0.8), y_root - reach * 0.5, z_root - reach * 0.15)
         fin.parent = data.edit_bones['body']
         fin.roll = 0.0
 
@@ -296,9 +359,29 @@ def make_idle(rig):
     return max(heights) - min(heights)
 
 
+def noise3(p, scale):
+    """Smooth value noise in [0, 1] (no external dependencies)."""
+    x, y, z = p.x * scale, p.y * scale, p.z * scale
+    ix, iy, iz = math.floor(x), math.floor(y), math.floor(z)
+    fx, fy, fz = x - ix, y - iy, z - iz
+    fx, fy, fz = (f * f * (3 - 2 * f) for f in (fx, fy, fz))
+
+    def h(a, b, c):
+        n = (a * 374761393 + b * 668265263 + c * 2147483647) & 0xFFFFFFFF
+        n = ((n ^ (n >> 13)) * 1274126177) & 0xFFFFFFFF
+        return (n & 0xFFFF) / 65535.0
+
+    def lerp(a, b, t):
+        return a + (b - a) * t
+    x0 = lerp(lerp(h(ix, iy, iz), h(ix + 1, iy, iz), fx), lerp(h(ix, iy + 1, iz), h(ix + 1, iy + 1, iz), fx), fy)
+    x1 = lerp(lerp(h(ix, iy, iz + 1), h(ix + 1, iy, iz + 1), fx),
+              lerp(h(ix, iy + 1, iz + 1), h(ix + 1, iy + 1, iz + 1), fx), fy)
+    return lerp(x0, x1, fz)
+
+
 def paint(obj, rig, species):
     """Vertex colours: back colour on top, belly colour underneath (by normal),
-    white flippers for the humpback (by fin weight)."""
+    plus per-species patterns (see SPECIES)."""
     mesh = obj.data
     attribute = mesh.color_attributes.new(name='Col', type='BYTE_COLOR', domain='CORNER')
     mesh.color_attributes.active_color = attribute
@@ -309,13 +392,31 @@ def paint(obj, rig, species):
 
     fin_groups = {obj.vertex_groups[n].index for n in ('fin.L', 'fin.R') if n in obj.vertex_groups}
     back, belly = Vector(species['back']), Vector(species['belly'])
+    throat = species.get('throat')
+    mottle = species.get('mottle', 0.0)
     for loop in mesh.loops:
         vertex = mesh.vertices[loop.vertex_index]
-        underside = min(1.0, max(0.0, (-vertex.normal.z - 0.1) / 0.4))
+        p, n = vertex.co, vertex.normal
+        s = 0.5 - p.y                                    # 0 at the snout, 1 at the tail
+        underside = min(1.0, max(0.0, (-n.z - 0.1) / 0.4))
+        if throat:
+            # belly colour only on the throat and chest, with a ragged edge
+            edge = throat[1] + (noise3(p, 18) - 0.5) * 0.12
+            underside *= min(1.0, max(0.0, (edge - s) / 0.06)) * min(1.0, max(0.0, (s - throat[0]) / 0.03))
         color = back.lerp(belly, underside)
-        if species['white_fins']:
-            fin = sum(g.weight for g in vertex.groups if g.group in fin_groups)
-            color = color.lerp(belly, min(1.0, fin * 1.5))
+        fin = sum(g.weight for g in vertex.groups if g.group in fin_groups) if fin_groups else 0.0
+        if species['white_fins'] and fin:
+            # white flippers, with darker blotches on top
+            blotch = noise3(p, 30) * max(0.0, n.z)
+            color = color.lerp(belly, min(1.0, fin * 1.6)).lerp(back, 0.6 * blotch)
+        if mottle:
+            spots = noise3(p, 11) * 0.6 + noise3(p, 29) * 0.4
+            color = color * (1.0 + mottle * (spots - 0.5) * 2)
+        if species.get('lips'):
+            # pale lower jaw and mouth line under the block head
+            jaw = min(1.0, max(0.0, (-n.z - 0.3) / 0.4)) * (s < 0.34) * min(1.0, abs(p.x) < 0.035)
+            color = color.lerp(Vector((0.72, 0.72, 0.72)), 0.8 * jaw)
+        color = Vector([min(1.0, max(0.0, c)) for c in color])
         attribute.data[loop.index].color = (*color, 1.0)
     log('vertex colours painted')
 

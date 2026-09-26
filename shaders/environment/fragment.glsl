@@ -16,6 +16,9 @@ uniform float floorNoise;    // sand-like variation (sea floor only)
 uniform vec3 fogColor;       // distance fog, towards the horizon
 uniform float fogNear;
 uniform float fogFar;
+// 1 while rendering what the water refracts: only what is under the surface
+// (a jumping whale's body in the air must not show through the water too).
+uniform float underwaterOnly;
 
 varying float lightIntensity;
 varying vec3 worldPosition;
@@ -37,6 +40,8 @@ float valueNoise(vec2 p) {
 }
 
 void main() {
+  if (underwaterOnly > 0.5 && worldPosition.z > waterHeight) discard;
+
   // Ambient light + diffuse light
   float computedLightIntensity = ambient + diffuse * lightIntensity;
 
